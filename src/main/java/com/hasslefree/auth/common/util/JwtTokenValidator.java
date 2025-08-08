@@ -34,6 +34,10 @@ public class JwtTokenValidator {
     }
 
     public boolean validateToken(String token) {
+        if (token == null || token.trim().isEmpty()) {
+            logger.warn("Token is null or empty");
+            return false;
+        }
         try {
             SignedJWT signedJWT = SignedJWT.parse(token);
 

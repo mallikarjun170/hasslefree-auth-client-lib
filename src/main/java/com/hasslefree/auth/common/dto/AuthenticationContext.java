@@ -2,7 +2,6 @@ package com.hasslefree.auth.common.dto;
 
 import com.hasslefree.auth.common.enums.UserRole;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 

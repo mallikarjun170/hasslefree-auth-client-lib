@@ -1,0 +1,28 @@
+# Maven output
+/target/
+
+# IDE files
+/.idea/
+*.iml
+*.ipr
+*.iws
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Maven wrapper
+.mvn/wrapper/maven-wrapper.jar
+
+# Test output
+/test-output/
+
+# VSCode
+.vscode/

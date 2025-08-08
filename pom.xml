@@ -10,6 +10,13 @@
     <description>A shared library for authentication and authorization services</description>
 
     <dependencies>
+        <!-- Lombok for reducing boilerplate code -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.32</version>
+            <scope>provided</scope>
+        </dependency>
         <!-- AWS Cognito SDK for JWT token handling -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>

@@ -8,6 +8,9 @@ import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+
+import com.hasslefree.auth.common.exception.InvalidTokenException;
+import com.hasslefree.auth.common.exception.TokenExpiredException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,6 +20,13 @@ import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Utility for validating and extracting claims from JWT tokens, especially AWS Cognito JWTs.
+ * <p>
+ * Handles signature verification, claim validation, and provides helper methods for extracting user info.
+ * Defensive against null/empty tokens and malformed input.
+ * Thread-safe for concurrent use.
+ */
 public class JwtTokenValidator {
     private static final Logger logger = LoggerFactory.getLogger(JwtTokenValidator.class);
     private final Map<String, RSAKey> jwkCache = new ConcurrentHashMap<>();
@@ -27,35 +37,60 @@ public class JwtTokenValidator {
     private final String userPoolId;
     private final String jwksUrl;
 
+    /**
+     * Create a new validator for a specific Cognito region, user pool, and JWKS URL.
+     *
+     * @param region AWS region (e.g., "us-east-1")
+     * @param userPoolId Cognito user pool ID
+     * @param jwksUrl JWKS endpoint URL
+     */
     public JwtTokenValidator(String region, String userPoolId, String jwksUrl) {
         this.region = region;
         this.userPoolId = userPoolId;
         this.jwksUrl = jwksUrl;
     }
 
-    public boolean validateToken(String token) {
+    /**
+     * Validate a JWT token for signature, expiration, issuer, audience, and token use.
+     *
+     * @param token JWT token string (may be null/empty)
+     * @return true if valid, false if invalid or malformed
+     */
+    /**
+     * Validate a JWT token for signature, expiration, issuer, audience, and token use.
+     * Throws custom exceptions for invalid or expired tokens.
+     *
+     * @param token JWT token string (may be null/empty)
+     * @throws InvalidTokenException if the token is invalid or malformed
+     * @throws TokenExpiredException if the token is expired
+     * @return true if valid
+     */
+    public boolean validateToken(String token) throws InvalidTokenException, TokenExpiredException {
         if (token == null || token.trim().isEmpty()) {
-            logger.warn("Token is null or empty");
-            return false;
+            throw new InvalidTokenException("Token is null or empty");
         }
         try {
             SignedJWT signedJWT = SignedJWT.parse(token);
 
             // Verify the signature
             if (!verifySignature(signedJWT)) {
-                logger.warn("Token signature verification failed");
-                return false;
+                throw new InvalidTokenException("Token signature verification failed");
             }
 
             // Verify token claims
             return verifyTokenClaims(signedJWT.getJWTClaimsSet());
 
         } catch (ParseException e) {
-            logger.error("Failed to parse JWT token", e);
-            return false;
+            throw new InvalidTokenException("Failed to parse JWT token", e);
         }
     }
 
+    /**
+     * Verify the signature of a parsed JWT using the JWKS.
+     *
+     * @param signedJWT Parsed JWT
+     * @return true if signature is valid, false otherwise
+     */
     private boolean verifySignature(SignedJWT signedJWT) {
         try {
             String keyId = signedJWT.getHeader().getKeyID();
@@ -75,6 +110,12 @@ public class JwtTokenValidator {
         }
     }
 
+    /**
+     * Get the RSA public key for a given key ID from the JWKS, using cache if possible.
+     *
+     * @param keyId Key ID from JWT header
+     * @return RSAKey or null if not found
+     */
     private RSAKey getRSAKey(String keyId) {
         // Check cache first
         RSAKey cachedKey = jwkCache.get(keyId);
@@ -100,10 +141,18 @@ public class JwtTokenValidator {
         return null;
     }
 
+    /**
+     * Determine if the JWKS should be refreshed from the remote endpoint.
+     *
+     * @return true if refresh is needed
+     */
     private boolean shouldRefreshJWKSet() {
         return jwkSet == null || (System.currentTimeMillis() - jwkSetLastUpdated) > JWK_SET_CACHE_DURATION;
     }
 
+    /**
+     * Refresh the JWKS from the remote endpoint and update the cache.
+     */
     private void refreshJWKSet() {
         try {
             jwkSet = JWKSet.load(URI.create(jwksUrl).toURL());
@@ -115,61 +164,88 @@ public class JwtTokenValidator {
         }
     }
 
-    private boolean verifyTokenClaims(JWTClaimsSet claims) {
+    /**
+     * Validate standard claims in the JWT (expiration, issuer, audience, token use).
+     *
+     * @param claims JWT claims set
+     * @return true if all claims are valid, false otherwise
+     */
+    private boolean verifyTokenClaims(JWTClaimsSet claims) throws InvalidTokenException, TokenExpiredException {
         try {
             // Check token expiration
             Date expirationTime = claims.getExpirationTime();
             if (expirationTime != null && expirationTime.before(new Date())) {
-                logger.warn("Token has expired");
-                return false;
+                throw new TokenExpiredException("Token has expired");
             }
 
             // Check issuer
             String expectedIssuer = String.format("https://cognito-idp.%s.amazonaws.com/%s", region, userPoolId);
             String actualIssuer = claims.getIssuer();
             if (!expectedIssuer.equals(actualIssuer)) {
-                logger.warn("Invalid token issuer. Expected: {}, Actual: {}", expectedIssuer, actualIssuer);
-                return false;
+                throw new InvalidTokenException("Invalid token issuer. Expected: " + expectedIssuer + ", Actual: " + actualIssuer);
             }
 
             // Check audience (client_id)
             if (!claims.getAudience().contains(userPoolId)) {
-                logger.warn("Invalid token audience");
-                return false;
+                throw new InvalidTokenException("Invalid token audience");
             }
 
             // Check token use (should be 'access' for access tokens)
             String tokenUse = (String) claims.getClaim("token_use");
             if (!"access".equals(tokenUse) && !"id".equals(tokenUse)) {
-                logger.warn("Invalid token use: {}", tokenUse);
-                return false;
+                throw new InvalidTokenException("Invalid token use: " + tokenUse);
             }
 
             return true;
 
+        } catch (TokenExpiredException | InvalidTokenException e) {
+            throw e;
         } catch (Exception e) {
-            logger.error("Error verifying token claims", e);
-            return false;
+            throw new InvalidTokenException("Error verifying token claims", e);
         }
     }
 
-    public String getUsernameFromToken(String token) {
+    /**
+     * Extract the username claim from a JWT token.
+     *
+     * @param token JWT token string
+     * @return Username, or null if not present or token invalid
+     */
+    /**
+     * Extract the username claim from a JWT token.
+     *
+     * @param token JWT token string
+     * @return Username
+     * @throws InvalidTokenException if the token is invalid or malformed
+     */
+    public String getUsernameFromToken(String token) throws InvalidTokenException {
         try {
             JWTClaimsSet claims = SignedJWT.parse(token).getJWTClaimsSet();
             return claims.getStringClaim("username");
         } catch (ParseException e) {
-            logger.error("Failed to extract username from token", e);
+            throw new InvalidTokenException("Failed to extract username from token", e);
         }
-        return null;
     }
 
-    public String getUserIdFromToken(String token) {
+    /**
+     * Extract the user ID (subject) from a JWT token.
+     *
+     * @param token JWT token string
+     * @return User ID (subject), or null if not present or token invalid
+     */
+    /**
+     * Extract the user ID (subject) from a JWT token.
+     *
+     * @param token JWT token string
+     * @return User ID (subject)
+     * @throws InvalidTokenException if the token is invalid or malformed
+     */
+    public String getUserIdFromToken(String token) throws InvalidTokenException {
         try {
             JWTClaimsSet claims = SignedJWT.parse(token).getJWTClaimsSet();
             return claims.getSubject();
         } catch (ParseException e) {
-            logger.error("Failed to extract user ID from token", e);
+            throw new InvalidTokenException("Failed to extract user ID from token", e);
         }
-        return null;
     }
 }

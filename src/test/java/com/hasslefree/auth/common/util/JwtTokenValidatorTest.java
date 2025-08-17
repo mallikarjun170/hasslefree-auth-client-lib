@@ -8,10 +8,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class JwtTokenValidatorTest {
 
     @Test
-    void validateToken_nullOrEmpty_throwsInvalidTokenException() {
+    void validateToken_nullOrEmpty_returnsFalse() {
         JwtTokenValidator validator = new JwtTokenValidator("us-east-1", "dummyPool", "https://dummy/jwks.json");
-        assertThrows(InvalidTokenException.class, () -> validator.validateToken(null));
-        assertThrows(InvalidTokenException.class, () -> validator.validateToken("   "));
+        assertFalse(validator.validateToken(null), "Null token should be invalid");
+        assertFalse(validator.validateToken("   "), "Empty token should be invalid");
     }
 
     @Test

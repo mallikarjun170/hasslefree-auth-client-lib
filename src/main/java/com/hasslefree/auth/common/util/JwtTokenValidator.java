@@ -58,30 +58,26 @@ public class JwtTokenValidator {
      */
     /**
      * Validate a JWT token for signature, expiration, issuer, audience, and token use.
-     * Throws custom exceptions for invalid or expired tokens.
+     * Returns true if valid, false otherwise.
      *
      * @param token JWT token string (may be null/empty)
-     * @throws InvalidTokenException if the token is invalid or malformed
-     * @throws TokenExpiredException if the token is expired
-     * @return true if valid
+     * @return true if valid, false if invalid or any error occurs
      */
-    public boolean validateToken(String token) throws InvalidTokenException, TokenExpiredException {
+    public boolean validateToken(String token) {
         if (token == null || token.trim().isEmpty()) {
-            throw new InvalidTokenException("Token is null or empty");
+            return false;
         }
         try {
             SignedJWT signedJWT = SignedJWT.parse(token);
-
             // Verify the signature
             if (!verifySignature(signedJWT)) {
-                throw new InvalidTokenException("Token signature verification failed");
+                return false;
             }
-
             // Verify token claims
             return verifyTokenClaims(signedJWT.getJWTClaimsSet());
-
-        } catch (ParseException e) {
-            throw new InvalidTokenException("Failed to parse JWT token", e);
+        } catch (Exception e) {
+            // Any parsing, signature, or claim validation error results in invalid token
+            return false;
         }
     }
 

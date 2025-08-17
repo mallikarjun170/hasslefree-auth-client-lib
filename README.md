@@ -1,5 +1,3 @@
-
-
 # Hasslefree Auth Client Library
 
 `auth-client-lib` is a robust, production-grade Java library for authentication and authorization, designed for seamless integration with AWS Cognito and JWT-based systems. It provides utilities for token validation, context extraction, and role-based access control, with a focus on security, testability, and code quality.
@@ -43,6 +41,52 @@ try {
 ```
 
 See Javadoc for full API details and advanced usage.
+
+## Spring Security Integration
+
+### Dependency Setup
+
+Ensure you declare the following beans in your Spring configuration:
+
+```java
+@Bean
+public JwtTokenValidator jwtTokenValidator() {
+    return new JwtTokenValidator("us-east-1", "yourUserPoolId",
+        "https://cognito-idp.us-east-1.amazonaws.com/yourUserPoolId/.well-known/jwks.json");
+}
+
+@Bean
+public JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint() {
+    return new JwtAuthenticationEntryPoint();
+}
+
+@Bean
+public JwtAuthenticationFilter jwtAuthenticationFilter(JwtTokenValidator validator) {
+    return new JwtAuthenticationFilter(validator);
+}
+```
+
+### Security Filter Chain Configuration
+
+```java
+@Bean
+public SecurityFilterChain securityFilterChain(HttpSecurity http,
+        JwtAuthenticationFilter jwtFilter,
+        JwtAuthenticationEntryPoint entryPoint) throws Exception {
+    http
+        .csrf(csrf -> csrf.disable())
+        .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint))
+        .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .authorizeHttpRequests(auth -> auth
+            .requestMatchers("/api/public/**").permitAll()
+            .anyRequest().authenticated()
+        )
+        .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+    return http.build();
+}
+```
+
+Replace the public endpoint patterns and bean parameters with those matching your application configuration.
 
 ## Development & Testing
 

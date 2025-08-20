@@ -36,7 +36,7 @@ class JwtAuthenticationEntryPointTest {
         assertThat(response.getContentType()).isEqualTo("application/json");
 
         String content = response.getContentAsString();
-        Map<String, Object> json = mapper.readValue(content, Map.class);
+        Map<String, Object> json = mapper.readValue(content, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
         assertThat(json).containsKeys("timestamp", "status", "error", "message", "path");
         assertThat(json.get("status")).isEqualTo(401);
         assertThat(json.get("message")).isEqualTo("Authentication required");

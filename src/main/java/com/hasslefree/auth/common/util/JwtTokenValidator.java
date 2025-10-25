@@ -36,6 +36,19 @@ public class JwtTokenValidator {
     private final String region;
     private final String userPoolId;
     private final String jwksUrl;
+    private final String clientId;
+
+    /**
+     * Create a new validator for a specific Cognito region, user pool, and JWKS URL.
+     * This constructor is kept for backward compatibility.
+     *
+     * @param region AWS region (e.g., "us-east-1")
+     * @param userPoolId Cognito user pool ID
+     * @param jwksUrl JWKS endpoint URL
+     */
+    public JwtTokenValidator(String region, String userPoolId, String jwksUrl) {
+        this(region, userPoolId, jwksUrl, null);
+    }
 
     /**
      * Create a new validator for a specific Cognito region, user pool, and JWKS URL.
@@ -43,11 +56,13 @@ public class JwtTokenValidator {
      * @param region AWS region (e.g., "us-east-1")
      * @param userPoolId Cognito user pool ID
      * @param jwksUrl JWKS endpoint URL
+     * @param clientId Cognito app client ID
      */
-    public JwtTokenValidator(String region, String userPoolId, String jwksUrl) {
+    public JwtTokenValidator(String region, String userPoolId, String jwksUrl, String clientId) {
         this.region = region;
         this.userPoolId = userPoolId;
         this.jwksUrl = jwksUrl;
+        this.clientId = clientId;
     }
 
     /**
@@ -181,9 +196,11 @@ public class JwtTokenValidator {
                 throw new InvalidTokenException("Invalid token issuer. Expected: " + expectedIssuer + ", Actual: " + actualIssuer);
             }
 
-            // Check audience (client_id)
-            if (!claims.getAudience().contains(userPoolId)) {
-                throw new InvalidTokenException("Invalid token audience");
+            // Check audience/client_id (AWS Cognito puts client_id in "client_id" claim, not "aud")
+            String tokenClientId = (String) claims.getClaim("client_id");
+            if (clientId != null && !clientId.equals(tokenClientId)) {
+                logger.warn("Invalid token client_id. Expected: {}, Actual: {}", clientId, tokenClientId);
+                throw new InvalidTokenException("Invalid token client_id. Expected: " + clientId + ", Actual: " + tokenClientId);
             }
 
             // Check token use (should be 'access' for access tokens)

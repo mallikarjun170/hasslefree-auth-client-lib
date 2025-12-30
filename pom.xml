@@ -9,6 +9,14 @@
     <name>auth-client-lib</name>
     <description>A shared library for authentication and authorization services</description>
 
+    <distributionManagement>
+        <repository>
+            <id>codeartifact</id>
+            <name>AWS CodeArtifact</name>
+            <url>https://hasslefree-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
+        </repository>
+    </distributionManagement>
+
     <dependencies>
         <!-- Lombok for reducing boilerplate code -->
         <dependency>

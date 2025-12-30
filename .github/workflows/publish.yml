@@ -8,7 +8,7 @@ on:
     types: [created]
 
 env:
-  AWS_REGION: ap-south-2
+  AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: 912675023810
   PROJECT_NAME: hasslefree
   CODEARTIFACT_DOMAIN: hasslefree

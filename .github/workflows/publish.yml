@@ -52,15 +52,13 @@ jobs:
           echo "CODEARTIFACT_AUTH_TOKEN=${CODEARTIFACT_AUTH_TOKEN}" >> $GITHUB_ENV
 
       - name: Configure Maven settings for CodeArtifact
+        env:
+          MAVEN_TOKEN: ${{ env.CODEARTIFACT_AUTH_TOKEN }}
         run: |
           mkdir -p ~/.m2
           
-          # Get token and clean it
-          TOKEN_VALUE="${{ env.CODEARTIFACT_AUTH_TOKEN }}"
-          echo "DEBUG: Token length before cleaning: ${#TOKEN_VALUE}"
-          
-          # Create settings.xml with direct token substitution
-          cat > ~/.m2/settings.xml <<EOF
+          # Create settings.xml template with environment variable placeholder
+          cat > ~/.m2/settings.xml.template <<'MAVEN_SETTINGS'
           <?xml version="1.0" encoding="UTF-8"?>
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -69,7 +67,7 @@ jobs:
               <server>
                 <id>codeartifact</id>
                 <username>aws</username>
-                <password>${TOKEN_VALUE}</password>
+                <password>$MAVEN_TOKEN</password>
               </server>
             </servers>
             <profiles>
@@ -87,11 +85,19 @@ jobs:
               <activeProfile>codeartifact</activeProfile>
             </activeProfiles>
           </settings>
-          EOF
+          MAVEN_SETTINGS
           
-          echo "=== Maven settings.xml created ==="
-          echo "Token length: ${#TOKEN_VALUE} characters"
-          echo "First 50 chars: $(echo "$TOKEN_VALUE" | head -c 50)..."
+          # Use envsubst to replace the environment variable
+          envsubst < ~/.m2/settings.xml.template > ~/.m2/settings.xml
+          rm ~/.m2/settings.xml.template
+          
+          echo "=== Maven settings.xml configured ==="
+          echo "Token length: ${#MAVEN_TOKEN} characters"
+          if grep -q "eyJ" ~/.m2/settings.xml; then
+            echo "✓ Token is in settings.xml"
+          else
+            echo "✗ WARNING: Token may not have been substituted!"
+          fi
 
       - name: Build and Test
         run: mvn -B -ntp clean verify

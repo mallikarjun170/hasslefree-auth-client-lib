@@ -11,7 +11,7 @@ env:
   AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: 912675023810
   PROJECT_NAME: hasslefree
-  CODEARTIFACT_DOMAIN: hasslefree
+  CODEARTIFACT_DOMAIN: hasslefree-dev
   CODEARTIFACT_REPOSITORY: maven
 
 permissions:

@@ -12,16 +12,16 @@
     <distributionManagement>
         <repository>
             <id>codeartifact</id>
-            <name>AWS CodeArtifact</name>
-            <url>https://hasslefree-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
+            <name>AWS CodeArtifact Dev</name>
+            <url>https://hasslefree-dev-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
         </repository>
     </distributionManagement>
 
     <repositories>
         <repository>
             <id>codeartifact</id>
-            <name>AWS CodeArtifact</name>
-            <url>https://hasslefree-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
+            <name>AWS CodeArtifact Dev</name>
+            <url>https://hasslefree-dev-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
         </repository>
         <repository>
             <id>central</id>

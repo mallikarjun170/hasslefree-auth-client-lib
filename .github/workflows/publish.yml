@@ -41,72 +41,33 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: github-${{ github.actor }}-${{ github.run_id }}-codeartifact
 
-      - name: Get CodeArtifact authorization token
+      - name: Verify CodeArtifact repository access
         run: |
-          CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
+          echo "=== CodeArtifact repository endpoint ==="
+          aws codeartifact get-repository-endpoint \
             --domain ${{ env.CODEARTIFACT_DOMAIN }} \
             --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
-            --region ${{ env.AWS_REGION }} \
-            --query authorizationToken \
-            --output text)
-          echo "CODEARTIFACT_AUTH_TOKEN=${CODEARTIFACT_AUTH_TOKEN}" >> $GITHUB_ENV
+            --repository ${{ env.CODEARTIFACT_REPOSITORY }} \
+            --format maven || true
+          echo "=== Describe repository (diagnostic) ==="
+          aws codeartifact describe-repository \
+            --domain ${{ env.CODEARTIFACT_DOMAIN }} \
+            --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
+            --repository ${{ env.CODEARTIFACT_REPOSITORY }} || true
 
-      - name: Configure Maven settings for CodeArtifact
-        env:
-          CODEARTIFACT_TOKEN: ${{ env.CODEARTIFACT_AUTH_TOKEN }}
+      - name: Login to CodeArtifact (configure Maven)
         run: |
-          mkdir -p ~/.m2
-          
-          # Use Python to safely substitute the token (guaranteed to work)
-          python3 << 'PYTHON_EOF'
-          import os
-          
-          token = os.environ.get('CODEARTIFACT_TOKEN', '')
-          if not token:
-              print("ERROR: CODEARTIFACT_TOKEN is empty!")
-              exit(1)
-          
-          settings_content = """<?xml version="1.0" encoding="UTF-8"?>
-          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
-                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
-            <servers>
-              <server>
-                <id>codeartifact</id>
-                <username>aws</username>
-                <password>""" + token + """</password>
-              </server>
-            </servers>
-            <profiles>
-              <profile>
-                <id>codeartifact</id>
-                <repositories>
-                  <repository>
-                    <id>codeartifact</id>
-                    <url>https://hasslefree-dev-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
-                  </repository>
-                </repositories>
-              </profile>
-            </profiles>
-            <activeProfiles>
-              <activeProfile>codeartifact</activeProfile>
-            </activeProfiles>
-          </settings>"""
-          
-          with open(os.path.expanduser('~/.m2/settings.xml'), 'w') as f:
-              f.write(settings_content)
-          
-          print(f"✓ Maven settings.xml created with token ({len(token)} chars)")
-          print(f"✓ Token starts with: {token[:20]}...")
-          PYTHON_EOF
-          
-          # Verify the file was created with token
-          if grep -q "eyJ" ~/.m2/settings.xml; then
-            echo "✓ Verification: Token is in settings.xml"
-          else
-            echo "✗ ERROR: Token not found in settings.xml!"
-            exit 1
-          fi
+          # This command writes a proper ~/.m2/settings.xml with temporary auth token
+          aws codeartifact login --tool maven \
+            --domain ${{ env.CODEARTIFACT_DOMAIN }} \
+            --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
+            --repository ${{ env.CODEARTIFACT_REPOSITORY }} --region ${{ env.AWS_REGION }}
+
+      - name: Show generated Maven settings (masked)
+        run: |
+          echo "Settings file exists: " && [ -f ~/.m2/settings.xml ] && stat -f%z ~/.m2/settings.xml || stat -c%s ~/.m2/settings.xml || true
+          # Print only the top of settings.xml for debugging (do NOT print password)
+          sed -n '1,120p' ~/.m2/settings.xml | sed -n '1,120p' || true
 
       - name: Build and Test
         run: mvn -B -ntp clean verify

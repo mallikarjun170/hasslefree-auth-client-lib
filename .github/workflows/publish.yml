@@ -54,6 +54,9 @@ jobs:
       - name: Configure Maven settings for CodeArtifact
         run: |
           mkdir -p ~/.m2
+          # Trim whitespace from token
+          CODEARTIFACT_AUTH_TOKEN=$(echo "${CODEARTIFACT_AUTH_TOKEN}" | xargs)
+          
           cat > ~/.m2/settings.xml <<'SETTINGS_EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
@@ -82,8 +85,13 @@ jobs:
             </activeProfiles>
           </settings>
           SETTINGS_EOF
-          sed -i "s|CODEARTIFACT_TOKEN_PLACEHOLDER|${CODEARTIFACT_AUTH_TOKEN}|g" ~/.m2/settings.xml
+          
+          # Use printf for safer substitution with special characters
+          printf '%s\n' "s|CODEARTIFACT_TOKEN_PLACEHOLDER|${CODEARTIFACT_AUTH_TOKEN}|" | sed -i -f - ~/.m2/settings.xml
+          
+          echo "=== Maven settings.xml content ==="
           cat ~/.m2/settings.xml
+          echo "=== Token length: $(echo -n "${CODEARTIFACT_AUTH_TOKEN}" | wc -c) characters ==="
 
       - name: Build and Test
         run: mvn -B -ntp clean verify

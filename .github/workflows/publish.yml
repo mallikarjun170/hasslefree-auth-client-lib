@@ -54,10 +54,9 @@ jobs:
       - name: Configure Maven settings for CodeArtifact
         run: |
           mkdir -p ~/.m2
-          # Trim whitespace from token
-          CODEARTIFACT_AUTH_TOKEN=$(echo "${CODEARTIFACT_AUTH_TOKEN}" | xargs)
           
-          cat > ~/.m2/settings.xml <<'SETTINGS_EOF'
+          # Create settings.xml template with XML-safe placeholders
+          cat > ~/.m2/settings.xml <<'MAVEN_SETTINGS'
           <?xml version="1.0" encoding="UTF-8"?>
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -66,7 +65,7 @@ jobs:
               <server>
                 <id>codeartifact</id>
                 <username>aws</username>
-                <password>CODEARTIFACT_TOKEN_PLACEHOLDER</password>
+                <password>{{CODEARTIFACT_TOKEN}}</password>
               </server>
             </servers>
             <profiles>
@@ -84,34 +83,20 @@ jobs:
               <activeProfile>codeartifact</activeProfile>
             </activeProfiles>
           </settings>
-          SETTINGS_EOF
+          MAVEN_SETTINGS
           
-          # Use printf for safer substitution with special characters
-          printf '%s\n' "s|CODEARTIFACT_TOKEN_PLACEHOLDER|${CODEARTIFACT_AUTH_TOKEN}|" | sed -i -f - ~/.m2/settings.xml
+          # Replace token placeholder with actual token
+          TOKEN_VALUE=$(echo "${{ env.CODEARTIFACT_AUTH_TOKEN }}" | tr -d '\n' | tr -d ' ')
+          /usr/bin/perl -i -pe "s|{{CODEARTIFACT_TOKEN}}|${TOKEN_VALUE}|" ~/.m2/settings.xml
           
-          echo "=== Maven settings.xml content ==="
-          cat ~/.m2/settings.xml
-          echo "=== Token length: $(echo -n "${CODEARTIFACT_AUTH_TOKEN}" | wc -c) characters ==="
+          echo "=== Maven settings.xml configured ==="
+          echo "Token length: ${#TOKEN_VALUE} characters"
 
       - name: Build and Test
         run: mvn -B -ntp clean verify
 
       - name: Publish to CodeArtifact
-        run: |
-          echo "=== AWS Credentials Test ==="
-          aws sts get-caller-identity
-          
-          echo ""
-          echo "=== CodeArtifact Domain Verification ==="
-          aws codeartifact describe-domain --domain ${{ env.CODEARTIFACT_DOMAIN }} --region ${{ env.AWS_REGION }}
-          
-          echo ""
-          echo "=== Maven Deploy with Debug Output ==="
-          mvn -B -X deploy -DskipTests 2>&1 | tee deploy.log
-          
-          echo ""
-          echo "=== Checking for 403 errors in log ==="
-          grep -i "403\|forbidden" deploy.log || echo "No 403 errors found"
+        run: mvn -B -ntp deploy -DskipTests
 
       - name: Publish Summary
         run: |

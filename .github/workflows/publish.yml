@@ -53,13 +53,20 @@ jobs:
 
       - name: Configure Maven settings for CodeArtifact
         env:
-          MAVEN_TOKEN: ${{ env.CODEARTIFACT_AUTH_TOKEN }}
+          CODEARTIFACT_TOKEN: ${{ env.CODEARTIFACT_AUTH_TOKEN }}
         run: |
           mkdir -p ~/.m2
           
-          # Create settings.xml template with environment variable placeholder
-          cat > ~/.m2/settings.xml.template <<'MAVEN_SETTINGS'
-          <?xml version="1.0" encoding="UTF-8"?>
+          # Use Python to safely substitute the token (guaranteed to work)
+          python3 << 'PYTHON_EOF'
+          import os
+          
+          token = os.environ.get('CODEARTIFACT_TOKEN', '')
+          if not token:
+              print("ERROR: CODEARTIFACT_TOKEN is empty!")
+              exit(1)
+          
+          settings_content = """<?xml version="1.0" encoding="UTF-8"?>
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                     xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
@@ -67,7 +74,7 @@ jobs:
               <server>
                 <id>codeartifact</id>
                 <username>aws</username>
-                <password>$MAVEN_TOKEN</password>
+                <password>""" + token + """</password>
               </server>
             </servers>
             <profiles>
@@ -76,7 +83,7 @@ jobs:
                 <repositories>
                   <repository>
                     <id>codeartifact</id>
-                    <url>https://${{ env.CODEARTIFACT_DOMAIN }}-${{ env.AWS_ACCOUNT_ID }}.d.codeartifact.${{ env.AWS_REGION }}.amazonaws.com/maven/maven/</url>
+                    <url>https://hasslefree-dev-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
                   </repository>
                 </repositories>
               </profile>
@@ -84,19 +91,21 @@ jobs:
             <activeProfiles>
               <activeProfile>codeartifact</activeProfile>
             </activeProfiles>
-          </settings>
-          MAVEN_SETTINGS
+          </settings>"""
           
-          # Use envsubst to replace the environment variable
-          envsubst < ~/.m2/settings.xml.template > ~/.m2/settings.xml
-          rm ~/.m2/settings.xml.template
+          with open(os.path.expanduser('~/.m2/settings.xml'), 'w') as f:
+              f.write(settings_content)
           
-          echo "=== Maven settings.xml configured ==="
-          echo "Token length: ${#MAVEN_TOKEN} characters"
+          print(f"✓ Maven settings.xml created with token ({len(token)} chars)")
+          print(f"✓ Token starts with: {token[:20]}...")
+          PYTHON_EOF
+          
+          # Verify the file was created with token
           if grep -q "eyJ" ~/.m2/settings.xml; then
-            echo "✓ Token is in settings.xml"
+            echo "✓ Verification: Token is in settings.xml"
           else
-            echo "✗ WARNING: Token may not have been substituted!"
+            echo "✗ ERROR: Token not found in settings.xml!"
+            exit 1
           fi
 
       - name: Build and Test

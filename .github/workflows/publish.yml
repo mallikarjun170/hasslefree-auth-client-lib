@@ -41,14 +41,47 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: github-${{ github.actor }}-${{ github.run_id }}-codeartifact
 
-      - name: Login to AWS CodeArtifact
+      - name: Get CodeArtifact authorization token
         run: |
-          aws codeartifact login \
-            --tool maven \
+          CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
             --domain ${{ env.CODEARTIFACT_DOMAIN }} \
             --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
-            --repository ${{ env.CODEARTIFACT_REPOSITORY }} \
-            --region ${{ env.AWS_REGION }}
+            --region ${{ env.AWS_REGION }} \
+            --query authorizationToken \
+            --output text)
+          echo "CODEARTIFACT_AUTH_TOKEN=${CODEARTIFACT_AUTH_TOKEN}" >> $GITHUB_ENV
+
+      - name: Configure Maven settings for CodeArtifact
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
+            <servers>
+              <server>
+                <id>codeartifact</id>
+                <username>aws</username>
+                <password>${env.CODEARTIFACT_AUTH_TOKEN}</password>
+              </server>
+            </servers>
+            <profiles>
+              <profile>
+                <id>codeartifact</id>
+                <repositories>
+                  <repository>
+                    <id>codeartifact</id>
+                    <url>https://${{ env.CODEARTIFACT_DOMAIN }}-${{ env.AWS_ACCOUNT_ID }}.d.codeartifact.${{ env.AWS_REGION }}.amazonaws.com/maven/maven/</url>
+                  </repository>
+                </repositories>
+              </profile>
+            </profiles>
+            <activeProfiles>
+              <activeProfile>codeartifact</activeProfile>
+            </activeProfiles>
+          </settings>
+          EOF
 
       - name: Build and Test
         run: mvn -B -ntp clean verify

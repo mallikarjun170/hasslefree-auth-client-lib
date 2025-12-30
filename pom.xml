@@ -17,6 +17,18 @@
         </repository>
     </distributionManagement>
 
+    <repositories>
+        <repository>
+            <id>codeartifact</id>
+            <name>AWS CodeArtifact</name>
+            <url>https://hasslefree-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
+        </repository>
+        <repository>
+            <id>central</id>
+            <url>https://repo1.maven.org/maven2</url>
+        </repository>
+    </repositories>
+
     <dependencies>
         <!-- Lombok for reducing boilerplate code -->
         <dependency>

@@ -98,7 +98,20 @@ jobs:
 
       - name: Publish to CodeArtifact
         run: |
-          mvn -B -ntp deploy -DskipTests
+          echo "=== AWS Credentials Test ==="
+          aws sts get-caller-identity
+          
+          echo ""
+          echo "=== CodeArtifact Domain Verification ==="
+          aws codeartifact describe-domain --domain ${{ env.CODEARTIFACT_DOMAIN }} --region ${{ env.AWS_REGION }}
+          
+          echo ""
+          echo "=== Maven Deploy with Debug Output ==="
+          mvn -B -X deploy -DskipTests 2>&1 | tee deploy.log
+          
+          echo ""
+          echo "=== Checking for 403 errors in log ==="
+          grep -i "403\|forbidden" deploy.log || echo "No 403 errors found"
 
       - name: Publish Summary
         run: |

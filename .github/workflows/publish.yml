@@ -63,7 +63,7 @@ jobs:
               <server>
                 <id>codeartifact</id>
                 <username>aws</username>
-                <password>\${CODEARTIFACT_AUTH_TOKEN}</password>
+                <password>${CODEARTIFACT_AUTH_TOKEN}</password>
               </server>
             </servers>
             <profiles>

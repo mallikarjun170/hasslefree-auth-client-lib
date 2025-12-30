@@ -55,8 +55,12 @@ jobs:
         run: |
           mkdir -p ~/.m2
           
-          # Create settings.xml template with XML-safe placeholders
-          cat > ~/.m2/settings.xml <<'MAVEN_SETTINGS'
+          # Get token and clean it
+          TOKEN_VALUE="${{ env.CODEARTIFACT_AUTH_TOKEN }}"
+          echo "DEBUG: Token length before cleaning: ${#TOKEN_VALUE}"
+          
+          # Create settings.xml with direct token substitution
+          cat > ~/.m2/settings.xml <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -65,7 +69,7 @@ jobs:
               <server>
                 <id>codeartifact</id>
                 <username>aws</username>
-                <password>{{CODEARTIFACT_TOKEN}}</password>
+                <password>${TOKEN_VALUE}</password>
               </server>
             </servers>
             <profiles>
@@ -83,20 +87,33 @@ jobs:
               <activeProfile>codeartifact</activeProfile>
             </activeProfiles>
           </settings>
-          MAVEN_SETTINGS
+          EOF
           
-          # Replace token placeholder with actual token
-          TOKEN_VALUE=$(echo "${{ env.CODEARTIFACT_AUTH_TOKEN }}" | tr -d '\n' | tr -d ' ')
-          /usr/bin/perl -i -pe "s|{{CODEARTIFACT_TOKEN}}|${TOKEN_VALUE}|" ~/.m2/settings.xml
-          
-          echo "=== Maven settings.xml configured ==="
+          echo "=== Maven settings.xml created ==="
           echo "Token length: ${#TOKEN_VALUE} characters"
+          echo "First 50 chars: $(echo "$TOKEN_VALUE" | head -c 50)..."
 
       - name: Build and Test
         run: mvn -B -ntp clean verify
 
       - name: Publish to CodeArtifact
-        run: mvn -B -ntp deploy -DskipTests
+        run: |
+          echo "=== Verifying AWS credentials ==="
+          aws sts get-caller-identity
+          
+          echo ""
+          echo "=== Verifying Maven settings.xml ==="
+          if [ -f ~/.m2/settings.xml ]; then
+            echo "Settings file exists"
+            echo "Settings file size: $(stat -f%z ~/.m2/settings.xml 2>/dev/null || stat -c%s ~/.m2/settings.xml 2>/dev/null) bytes"
+          else
+            echo "ERROR: settings.xml not found!"
+            exit 1
+          fi
+          
+          echo ""
+          echo "=== Running Maven deploy ==="
+          mvn -B deploy -DskipTests -q
 
       - name: Publish Summary
         run: |

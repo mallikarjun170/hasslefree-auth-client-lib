@@ -61,17 +61,40 @@ jobs:
             --duration-seconds 900 \
             --query authorizationToken \
             --output text)
+          
+          if [ -z "$CODEARTIFACT_AUTH_TOKEN" ]; then
+            echo "❌ ERROR: Failed to obtain CodeArtifact token!"
+            exit 1
+          fi
+          
           echo "CODEARTIFACT_AUTH_TOKEN=${CODEARTIFACT_AUTH_TOKEN}" >> $GITHUB_ENV
-          echo "✓ Token obtained (${#CODEARTIFACT_AUTH_TOKEN} chars)"
+          echo "✓ Token obtained ($(echo -n "$CODEARTIFACT_AUTH_TOKEN" | wc -c) chars)"
 
       - name: Configure Maven for CodeArtifact
+        env:
+          CODEARTIFACT_TOKEN: ${{ env.CODEARTIFACT_AUTH_TOKEN }}
         run: |
           echo "=== Creating Maven settings.xml ==="
           mkdir -p ~/.m2
           
-          # Create settings.xml with proper XML escaping
-          cat > ~/.m2/settings.xml <<'SETTINGS_EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
+          # Verify we have the token
+          if [ -z "$CODEARTIFACT_TOKEN" ]; then
+            echo "❌ ERROR: CODEARTIFACT_TOKEN is empty!"
+            exit 1
+          fi
+          
+          # Use Python for safe token substitution (guaranteed availability)
+          python3 << 'PYTHON_EOF'
+          import os
+          import xml.etree.ElementTree as ET
+          
+          token = os.environ.get('CODEARTIFACT_TOKEN', '')
+          if not token:
+              print("❌ ERROR: Token not found in environment!")
+              exit(1)
+          
+          # Create settings.xml using ElementTree for proper XML generation
+          settings_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                     xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
@@ -79,7 +102,7 @@ jobs:
               <server>
                 <id>codeartifact</id>
                 <username>aws</username>
-                <password>${env.CODEARTIFACT_AUTH_TOKEN}</password>
+                <password>{token}</password>
               </server>
             </servers>
             <profiles>
@@ -96,13 +119,13 @@ jobs:
             <activeProfiles>
               <activeProfile>codeartifact</activeProfile>
             </activeProfiles>
-          </settings>
-          SETTINGS_EOF
+          </settings>'''
           
-          # Replace token placeholder with actual token value
-          sed -i "s|\${env.CODEARTIFACT_AUTH_TOKEN}|${CODEARTIFACT_AUTH_TOKEN}|g" ~/.m2/settings.xml
+          with open(os.path.expanduser('~/.m2/settings.xml'), 'w') as f:
+              f.write(settings_xml)
           
-          echo "✓ settings.xml created"
+          print(f"✓ settings.xml created with token ({len(token)} chars)")
+          PYTHON_EOF
 
       - name: Verify Maven settings
         run: |
@@ -114,17 +137,36 @@ jobs:
           SIZE=$(stat -c%s ~/.m2/settings.xml 2>/dev/null || stat -f%z ~/.m2/settings.xml 2>/dev/null)
           echo "✓ settings.xml exists (${SIZE} bytes)"
           
-          if grep -q "codeartifact" ~/.m2/settings.xml; then
-            echo "✓ Contains codeartifact server entry"
+          # Verify server entry
+          if grep -q '<id>codeartifact</id>' ~/.m2/settings.xml; then
+            echo "✓ Contains codeartifact server ID"
           else
-            echo "❌ ERROR: codeartifact not found in settings.xml!"
+            echo "❌ ERROR: codeartifact server ID not found!"
             exit 1
           fi
           
-          if grep -q "aws" ~/.m2/settings.xml; then
-            echo "✓ Contains AWS username entry"
+          # Verify username
+          if grep -q '<username>aws</username>' ~/.m2/settings.xml; then
+            echo "✓ Contains AWS username"
           else
-            echo "❌ ERROR: aws username not found in settings.xml!"
+            echo "❌ ERROR: aws username not found!"
+            exit 1
+          fi
+          
+          # Verify password is present (but don't print it)
+          if grep -q '<password>' ~/.m2/settings.xml; then
+            PASSWORD_LENGTH=$(grep -oP '(?<=<password>).+?(?=</password>)' ~/.m2/settings.xml | wc -c)
+            echo "✓ Contains password (${PASSWORD_LENGTH} chars)"
+          else
+            echo "❌ ERROR: password not found in settings.xml!"
+            exit 1
+          fi
+          
+          # Verify repository URL
+          if grep -q 'hasslefree-dev-912675023810.d.codeartifact.us-east-1.amazonaws.com' ~/.m2/settings.xml; then
+            echo "✓ Contains correct CodeArtifact URL"
+          else
+            echo "❌ ERROR: CodeArtifact URL not found!"
             exit 1
           fi
 
@@ -137,9 +179,27 @@ jobs:
           echo "Domain: ${{ env.CODEARTIFACT_DOMAIN }}"
           echo "Repository: ${{ env.CODEARTIFACT_REPOSITORY }}"
           echo "Region: ${{ env.AWS_REGION }}"
+          echo "Account: ${{ env.AWS_ACCOUNT_ID }}"
           echo ""
-          mvn -B deploy -DskipTests -Dorg.slf4j.simpleLogger.defaultLogLevel=info
-          echo "✓ Published successfully"
+          
+          # Verify settings.xml before deploy
+          if [ ! -f ~/.m2/settings.xml ]; then
+            echo "❌ ERROR: settings.xml not found before deploy!"
+            exit 1
+          fi
+          
+          # Deploy with verbose output
+          mvn -B deploy \
+            -DskipTests \
+            -Dorg.slf4j.simpleLogger.defaultLogLevel=info \
+            --settings ~/.m2/settings.xml
+          
+          if [ $? -eq 0 ]; then
+            echo "✓ Published successfully"
+          else
+            echo "❌ Deploy failed - check Maven output above"
+            exit 1
+          fi
 
       - name: Publish Summary
         run: |

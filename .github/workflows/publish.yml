@@ -92,8 +92,6 @@ jobs:
         run: |
           echo "=== Configuring Maven with CodeArtifact credentials ==="
           
-          # Try using aws codeartifact login first
-          echo "Attempting: aws codeartifact login --tool maven"
           if aws codeartifact login --tool maven \
             --domain ${{ env.CODEARTIFACT_DOMAIN }} \
             --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
@@ -101,28 +99,15 @@ jobs:
             --region ${{ env.AWS_REGION }} 2>&1; then
             echo "✓ Successfully used aws codeartifact login"
           else
-            echo "⚠ aws codeartifact login failed or not supported, using manual approach..."
+            echo "⚠ Using manual settings.xml approach..."
             
-            # Fallback: manual settings.xml creation
             mkdir -p ~/.m2
             
-            if [ -z "$CODEARTIFACT_TOKEN" ]; then
-              echo "❌ ERROR: CODEARTIFACT_TOKEN is empty!"
-              exit 1
-            fi
+            TOKEN_LEN=$(echo -n "$CODEARTIFACT_TOKEN" | wc -c)
+            echo "Token length: ${TOKEN_LEN} chars"
             
-            echo "Token length: $(echo -n "$CODEARTIFACT_TOKEN" | wc -c) chars"
-            
-            # Use Python for safe token substitution
-            python3 << 'PYTHON_EOF'
-          import os
-          
-          token = os.environ.get('CODEARTIFACT_TOKEN', '')
-          if not token:
-              print("❌ ERROR: Token not found in environment!")
-              exit(1)
-          
-          settings_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+            cat > ~/.m2/settings.xml << SETTINGS_EOF
+          <?xml version="1.0" encoding="UTF-8"?>
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                     xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
@@ -130,7 +115,7 @@ jobs:
               <server>
                 <id>codeartifact</id>
                 <username>aws</username>
-                <password>{token}</password>
+                <password>${CODEARTIFACT_TOKEN}</password>
               </server>
             </servers>
             <profiles>
@@ -147,17 +132,72 @@ jobs:
             <activeProfiles>
               <activeProfile>codeartifact</activeProfile>
             </activeProfiles>
-          </settings>'''
-          
-          with open(os.path.expanduser('~/.m2/settings.xml'), 'w') as f:
-              f.write(settings_xml)
-          
-          print(f"✓ settings.xml created with token ({len(token)} chars)")
-          PYTHON_EOF
+          </settings>
+          SETTINGS_EOF
+            
+            FILE_SIZE=$(stat -c%s ~/.m2/settings.xml 2>/dev/null || stat -f%z ~/.m2/settings.xml 2>/dev/null)
+            echo "✓ settings.xml created (${FILE_SIZE} bytes)"
           fi
 
       - name: Build and Test
         run: mvn -B -ntp clean verify
+
+      - name: Debug Maven settings
+        run: |
+          echo "=== Verifying settings.xml ==="
+          if [ ! -f ~/.m2/settings.xml ]; then
+            echo "❌ ERROR: settings.xml not found!"
+            exit 1
+          fi
+          
+          FILE_SIZE=$(stat -c%s ~/.m2/settings.xml 2>/dev/null || stat -f%z ~/.m2/settings.xml 2>/dev/null)
+          echo "✓ settings.xml exists (${FILE_SIZE} bytes)"
+          echo ""
+          
+          # Check critical elements
+          echo "=== Checking critical XML elements ==="
+          if grep -q '<id>codeartifact</id>' ~/.m2/settings.xml; then
+            COUNT=$(grep -c '<id>codeartifact</id>' ~/.m2/settings.xml)
+            echo "✓ Found <id>codeartifact</id> ($COUNT occurrences)"
+          else
+            echo "❌ ERROR: <id>codeartifact</id> not found!"
+            exit 1
+          fi
+          
+          if grep -q '<username>aws</username>' ~/.m2/settings.xml; then
+            echo "✓ Found <username>aws</username>"
+          else
+            echo "❌ ERROR: <username>aws</username> not found!"
+            exit 1
+          fi
+          
+          if grep -q '<password>' ~/.m2/settings.xml; then
+            # Extract password length without exposing it
+            PWD_LINE=$(grep '<password>' ~/.m2/settings.xml)
+            PWD_LENGTH=$(echo "$PWD_LINE" | grep -o '<password>.*</password>' | sed 's/<password>//;s/<\/password>//' | wc -c)
+            echo "✓ Found <password> (${PWD_LENGTH} chars)"
+          else
+            echo "❌ ERROR: <password> not found!"
+            exit 1
+          fi
+          
+          if grep -q 'hasslefree-dev-912675023810.d.codeartifact' ~/.m2/settings.xml; then
+            echo "✓ Found CodeArtifact repository URL"
+          else
+            echo "❌ ERROR: CodeArtifact URL not found!"
+            exit 1
+          fi
+          
+          if grep -q '<activeProfile>codeartifact</activeProfile>' ~/.m2/settings.xml; then
+            echo "✓ Found activeProfile: codeartifact"
+          else
+            echo "❌ ERROR: activeProfile not found!"
+            exit 1
+          fi
+          
+          echo ""
+          echo "=== First 20 lines (password masked) ==="
+          sed 's/<password>.*<\/password>/<password>***MASKED**<\/password>/g' ~/.m2/settings.xml | head -20
 
       - name: Publish to CodeArtifact
         run: |
@@ -176,31 +216,51 @@ jobs:
           
           # Show what Maven will use
           echo "Using settings.xml: $(ls -lh ~/.m2/settings.xml)"
-          
-          # Deploy with maximum verbosity
           echo ""
+          
+          # Show the structure of settings.xml (without password)
+          echo "=== settings.xml structure (password masked) ==="
+          sed 's/<password>.*<\/password>/<password>***MASKED**<\/password>/g' ~/.m2/settings.xml | head -30
+          echo ""
+          
+          # Deploy with maximum verbosity and capture error
           echo "Starting deploy..."
+          DEPLOY_LOG=$(mktemp)
           mvn -B deploy \
             -DskipTests \
-            -Dorg.slf4j.simpleLogger.defaultLogLevel=debug \
             --settings ~/.m2/settings.xml \
-            --errors || {
-              echo ""
-              echo "❌ Deploy failed"
-              echo ""
-              echo "Debugging information:"
-              echo "=== AWS Caller Identity ==="
-              aws sts get-caller-identity
-              echo ""
-              echo "=== CodeArtifact Repository ==="
-              aws codeartifact describe-repository \
-                --domain ${{ env.CODEARTIFACT_DOMAIN }} \
-                --repository ${{ env.CODEARTIFACT_REPOSITORY }} \
-                --region ${{ env.AWS_REGION }}
-              exit 1
-            }
+            2>&1 | tee "$DEPLOY_LOG"
           
-          echo "✓ Published successfully"
+          DEPLOY_STATUS=$?
+          
+          if [ $DEPLOY_STATUS -eq 0 ]; then
+            echo ""
+            echo "✓ Published successfully"
+          else
+            echo ""
+            echo "❌ Deploy failed with exit code: $DEPLOY_STATUS"
+            echo ""
+            echo "=== Extracting error message ==="
+            # Try to find the actual error
+            grep -i "error\|failed\|exception" "$DEPLOY_LOG" | tail -20
+            echo ""
+            echo "=== Checking Maven settings authentication ==="
+            grep -A 2 '<server>' ~/.m2/settings.xml | head -10
+            echo ""
+            echo "=== AWS Caller Identity ==="
+            aws sts get-caller-identity
+            echo ""
+            echo "=== CodeArtifact Repository ==="
+            aws codeartifact describe-repository \
+              --domain ${{ env.CODEARTIFACT_DOMAIN }} \
+              --repository ${{ env.CODEARTIFACT_REPOSITORY }} \
+              --region ${{ env.AWS_REGION }}
+            echo ""
+            echo "=== Full Maven error log ==="
+            cat "$DEPLOY_LOG" | tail -50
+            rm -f "$DEPLOY_LOG"
+            exit 1
+          fi
 
       - name: Publish Summary
         run: |

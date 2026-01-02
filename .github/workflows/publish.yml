@@ -41,55 +41,47 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: github-${{ github.actor }}-${{ github.run_id }}-codeartifact
 
-      - name: Verify CodeArtifact repository access
+      - name: Verify CodeArtifact repository exists
         run: |
-          echo "=== CodeArtifact repository endpoint ==="
-          aws codeartifact get-repository-endpoint \
-            --domain ${{ env.CODEARTIFACT_DOMAIN }} \
-            --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
-            --repository ${{ env.CODEARTIFACT_REPOSITORY }} \
-            --format maven || true
-          echo "=== Describe repository (diagnostic) ==="
+          echo "=== Checking CodeArtifact repository ==="
           aws codeartifact describe-repository \
             --domain ${{ env.CODEARTIFACT_DOMAIN }} \
             --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
-            --repository ${{ env.CODEARTIFACT_REPOSITORY }} || true
+            --repository ${{ env.CODEARTIFACT_REPOSITORY }} \
+            --region ${{ env.AWS_REGION }}
+          echo "✓ Repository verified"
 
-      - name: Login to CodeArtifact (configure Maven)
+      - name: Login to CodeArtifact
         run: |
-          # This command writes a proper ~/.m2/settings.xml with temporary auth token
+          echo "=== Configuring Maven for CodeArtifact ==="
           aws codeartifact login --tool maven \
             --domain ${{ env.CODEARTIFACT_DOMAIN }} \
             --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
-            --repository ${{ env.CODEARTIFACT_REPOSITORY }} --region ${{ env.AWS_REGION }}
+            --repository ${{ env.CODEARTIFACT_REPOSITORY }} \
+            --region ${{ env.AWS_REGION }}
+          echo "✓ Maven configured for CodeArtifact"
 
-      - name: Show generated Maven settings (masked)
+      - name: Verify Maven settings
         run: |
-          echo "Settings file exists: " && [ -f ~/.m2/settings.xml ] && stat -f%z ~/.m2/settings.xml || stat -c%s ~/.m2/settings.xml || true
-          # Print only the top of settings.xml for debugging (do NOT print password)
-          sed -n '1,120p' ~/.m2/settings.xml | sed -n '1,120p' || true
+          if [ ! -f ~/.m2/settings.xml ]; then
+            echo "❌ ERROR: settings.xml not created!"
+            exit 1
+          fi
+          echo "✓ settings.xml created ($(stat -c%s ~/.m2/settings.xml) bytes)"
+          echo "✓ Contains codeartifact server entry: $(grep -c 'codeartifact' ~/.m2/settings.xml || echo '0') occurrences"
 
       - name: Build and Test
         run: mvn -B -ntp clean verify
 
       - name: Publish to CodeArtifact
         run: |
-          echo "=== Verifying AWS credentials ==="
-          aws sts get-caller-identity
-          
+          echo "=== Publishing to CodeArtifact ==="
+          echo "Domain: ${{ env.CODEARTIFACT_DOMAIN }}"
+          echo "Repository: ${{ env.CODEARTIFACT_REPOSITORY }}"
+          echo "Region: ${{ env.AWS_REGION }}"
           echo ""
-          echo "=== Verifying Maven settings.xml ==="
-          if [ -f ~/.m2/settings.xml ]; then
-            echo "Settings file exists"
-            echo "Settings file size: $(stat -f%z ~/.m2/settings.xml 2>/dev/null || stat -c%s ~/.m2/settings.xml 2>/dev/null) bytes"
-          else
-            echo "ERROR: settings.xml not found!"
-            exit 1
-          fi
-          
-          echo ""
-          echo "=== Running Maven deploy ==="
-          mvn -B deploy -DskipTests -q
+          mvn -B deploy -DskipTests -Dorg.slf4j.simpleLogger.defaultLogLevel=info
+          echo "✓ Published successfully"
 
       - name: Publish Summary
         run: |
@@ -100,3 +92,16 @@ jobs:
           echo "| Domain | ${{ env.CODEARTIFACT_DOMAIN }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Repository | ${{ env.CODEARTIFACT_REPOSITORY }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Region | ${{ env.AWS_REGION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Artifact | com.hasslefree:auth-client-lib |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Handle publish failure
+        if: failure()
+        run: |
+          echo "## ❌ Publish Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Troubleshooting Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Verify AWS credentials: \`aws sts get-caller-identity\`" >> $GITHUB_STEP_SUMMARY
+          echo "2. Check CodeArtifact domain/repo: \`aws codeartifact describe-repository ...\`" >> $GITHUB_STEP_SUMMARY
+          echo "3. Check IAM role permissions: \`aws iam get-role-policy ...\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. Review Maven debug output: add \`-X\` flag to mvn commands" >> $GITHUB_STEP_SUMMARY
+

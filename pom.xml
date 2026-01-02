@@ -1,4 +1,5 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.hasslefree</groupId>
@@ -6,13 +7,12 @@
     <version>1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
-    <name>auth-client-lib</name>
+    <name>hasslefree-auth-client-lib</name>
     <description>A shared library for authentication and authorization services</description>
-
     <distributionManagement>
         <repository>
             <id>codeartifact</id>
-            <name>AWS CodeArtifact Dev</name>
+            <name>CodeArtifact Repository</name>
             <url>https://hasslefree-dev-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
         </repository>
     </distributionManagement>
@@ -20,7 +20,7 @@
     <repositories>
         <repository>
             <id>codeartifact</id>
-            <name>AWS CodeArtifact Dev</name>
+            <name>CodeArtifact Repository</name>
             <url>https://hasslefree-dev-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
         </repository>
         <repository>
@@ -48,7 +48,7 @@
         <dependency>
             <groupId>com.nimbusds</groupId>
             <artifactId>nimbus-jose-jwt</artifactId>
-            <version>9.37.3</version>
+            <version>10.6</version>
         </dependency>
 
         <!-- Logging -->

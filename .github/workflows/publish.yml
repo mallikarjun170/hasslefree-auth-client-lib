@@ -100,13 +100,11 @@ jobs:
             echo "✓ Successfully used aws codeartifact login"
           else
             echo "⚠ Using manual settings.xml approach..."
-            
             mkdir -p ~/.m2
-            
             TOKEN_LEN=$(echo -n "$CODEARTIFACT_TOKEN" | wc -c)
             echo "Token length: ${TOKEN_LEN} chars"
             
-            cat > ~/.m2/settings.xml << SETTINGS_EOF
+            cat > ~/.m2/settings.xml << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -115,7 +113,7 @@ jobs:
               <server>
                 <id>codeartifact</id>
                 <username>aws</username>
-                <password>${CODEARTIFACT_TOKEN}</password>
+                <password>PLACEHOLDER_TOKEN</password>
               </server>
             </servers>
             <profiles>
@@ -133,8 +131,9 @@ jobs:
               <activeProfile>codeartifact</activeProfile>
             </activeProfiles>
           </settings>
-          SETTINGS_EOF
+          EOF
             
+            sed -i "s|PLACEHOLDER_TOKEN|$CODEARTIFACT_TOKEN|g" ~/.m2/settings.xml
             FILE_SIZE=$(stat -c%s ~/.m2/settings.xml 2>/dev/null || stat -f%z ~/.m2/settings.xml 2>/dev/null)
             echo "✓ settings.xml created (${FILE_SIZE} bytes)"
           fi
@@ -208,57 +207,56 @@ jobs:
           echo "Account: ${{ env.AWS_ACCOUNT_ID }}"
           echo ""
           
-          # Verify settings.xml before deploy
           if [ ! -f ~/.m2/settings.xml ]; then
             echo "❌ ERROR: settings.xml not found before deploy!"
             exit 1
           fi
           
-          # Show what Maven will use
           echo "Using settings.xml: $(ls -lh ~/.m2/settings.xml)"
           echo ""
           
-          # Show the structure of settings.xml (without password)
-          echo "=== settings.xml structure (password masked) ==="
-          sed 's/<password>.*<\/password>/<password>***MASKED**<\/password>/g' ~/.m2/settings.xml | head -30
+          echo "=== Verifying token in settings.xml ==="
+          if grep -q "PLACEHOLDER_TOKEN" ~/.m2/settings.xml; then
+            echo "❌ ERROR: Token was not properly substituted!"
+            echo "Placeholder still present in settings.xml"
+            exit 1
+          fi
+          
+          PWD_LEN=$(grep '<password>' ~/.m2/settings.xml | grep -o '<password>.*</password>' | sed 's/<password>//;s/<\/password>//' | wc -c)
+          echo "✓ Token embedded in settings.xml (${PWD_LEN} chars)"
           echo ""
           
-          # Deploy with maximum verbosity and capture error
           echo "Starting deploy..."
-          DEPLOY_LOG=$(mktemp)
+          set +e
           mvn -B deploy \
             -DskipTests \
             --settings ~/.m2/settings.xml \
-            2>&1 | tee "$DEPLOY_LOG"
+            2>&1 | tee /tmp/mvn_deploy.log
           
           DEPLOY_STATUS=$?
+          set -e
           
           if [ $DEPLOY_STATUS -eq 0 ]; then
             echo ""
-            echo "✓ Published successfully"
+            echo "✓ Published successfully to CodeArtifact"
+            exit 0
           else
             echo ""
             echo "❌ Deploy failed with exit code: $DEPLOY_STATUS"
             echo ""
-            echo "=== Extracting error message ==="
-            # Try to find the actual error
-            grep -i "error\|failed\|exception" "$DEPLOY_LOG" | tail -20
+            echo "=== Maven error summary ==="
+            grep -i "\[ERROR\]" /tmp/mvn_deploy.log | tail -10 || true
             echo ""
-            echo "=== Checking Maven settings authentication ==="
-            grep -A 2 '<server>' ~/.m2/settings.xml | head -10
+            echo "=== Checking settings.xml password ==="
+            PASSWD=$(grep '<password>' ~/.m2/settings.xml | sed 's/.*<password>//;s/<\/password>.*//')
+            echo "Password length in file: $(echo -n "$PASSWD" | wc -c) chars"
+            echo "Password starts with: $(echo -n "$PASSWD" | cut -c1-20)..."
             echo ""
             echo "=== AWS Caller Identity ==="
             aws sts get-caller-identity
             echo ""
-            echo "=== CodeArtifact Repository ==="
-            aws codeartifact describe-repository \
-              --domain ${{ env.CODEARTIFACT_DOMAIN }} \
-              --repository ${{ env.CODEARTIFACT_REPOSITORY }} \
-              --region ${{ env.AWS_REGION }}
-            echo ""
-            echo "=== Full Maven error log ==="
-            cat "$DEPLOY_LOG" | tail -50
-            rm -f "$DEPLOY_LOG"
+            echo "=== Full error log ==="
+            cat /tmp/mvn_deploy.log | tail -80
             exit 1
           fi
 

@@ -228,18 +228,19 @@ jobs:
           
           echo "Starting deploy..."
           set +e
+          set -o pipefail
           mvn -B deploy \
             -DskipTests \
             --settings ~/.m2/settings.xml \
             2>&1 | tee /tmp/mvn_deploy.log
           
           DEPLOY_STATUS=$?
+          set +o pipefail
           set -e
           
           if [ $DEPLOY_STATUS -eq 0 ]; then
             echo ""
             echo "✓ Published successfully to CodeArtifact"
-            exit 0
           else
             echo ""
             echo "❌ Deploy failed with exit code: $DEPLOY_STATUS"
@@ -261,6 +262,7 @@ jobs:
           fi
 
       - name: Publish Summary
+        if: success()
         run: |
           echo "## ✅ Published to CodeArtifact" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

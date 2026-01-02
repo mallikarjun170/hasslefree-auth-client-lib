@@ -51,24 +51,82 @@ jobs:
             --region ${{ env.AWS_REGION }}
           echo "✓ Repository verified"
 
-      - name: Login to CodeArtifact
+      - name: Get CodeArtifact authorization token
         run: |
-          echo "=== Configuring Maven for CodeArtifact ==="
-          aws codeartifact login --tool maven \
+          echo "=== Requesting authorization token ==="
+          CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
             --domain ${{ env.CODEARTIFACT_DOMAIN }} \
             --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
-            --repository ${{ env.CODEARTIFACT_REPOSITORY }} \
-            --region ${{ env.AWS_REGION }}
-          echo "✓ Maven configured for CodeArtifact"
+            --region ${{ env.AWS_REGION }} \
+            --duration-seconds 900 \
+            --query authorizationToken \
+            --output text)
+          echo "CODEARTIFACT_AUTH_TOKEN=${CODEARTIFACT_AUTH_TOKEN}" >> $GITHUB_ENV
+          echo "✓ Token obtained (${#CODEARTIFACT_AUTH_TOKEN} chars)"
+
+      - name: Configure Maven for CodeArtifact
+        run: |
+          echo "=== Creating Maven settings.xml ==="
+          mkdir -p ~/.m2
+          
+          # Create settings.xml with proper XML escaping
+          cat > ~/.m2/settings.xml <<'SETTINGS_EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
+            <servers>
+              <server>
+                <id>codeartifact</id>
+                <username>aws</username>
+                <password>${env.CODEARTIFACT_AUTH_TOKEN}</password>
+              </server>
+            </servers>
+            <profiles>
+              <profile>
+                <id>codeartifact</id>
+                <repositories>
+                  <repository>
+                    <id>codeartifact</id>
+                    <url>https://hasslefree-dev-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
+                  </repository>
+                </repositories>
+              </profile>
+            </profiles>
+            <activeProfiles>
+              <activeProfile>codeartifact</activeProfile>
+            </activeProfiles>
+          </settings>
+          SETTINGS_EOF
+          
+          # Replace token placeholder with actual token value
+          sed -i "s|\${env.CODEARTIFACT_AUTH_TOKEN}|${CODEARTIFACT_AUTH_TOKEN}|g" ~/.m2/settings.xml
+          
+          echo "✓ settings.xml created"
 
       - name: Verify Maven settings
         run: |
           if [ ! -f ~/.m2/settings.xml ]; then
-            echo "❌ ERROR: settings.xml not created!"
+            echo "❌ ERROR: settings.xml not found!"
             exit 1
           fi
-          echo "✓ settings.xml created ($(stat -c%s ~/.m2/settings.xml) bytes)"
-          echo "✓ Contains codeartifact server entry: $(grep -c 'codeartifact' ~/.m2/settings.xml || echo '0') occurrences"
+          
+          SIZE=$(stat -c%s ~/.m2/settings.xml 2>/dev/null || stat -f%z ~/.m2/settings.xml 2>/dev/null)
+          echo "✓ settings.xml exists (${SIZE} bytes)"
+          
+          if grep -q "codeartifact" ~/.m2/settings.xml; then
+            echo "✓ Contains codeartifact server entry"
+          else
+            echo "❌ ERROR: codeartifact not found in settings.xml!"
+            exit 1
+          fi
+          
+          if grep -q "aws" ~/.m2/settings.xml; then
+            echo "✓ Contains AWS username entry"
+          else
+            echo "❌ ERROR: aws username not found in settings.xml!"
+            exit 1
+          fi
 
       - name: Build and Test
         run: mvn -B -ntp clean verify

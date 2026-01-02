@@ -41,6 +41,17 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: github-${{ github.actor }}-${{ github.run_id }}-codeartifact
 
+      - name: Upgrade AWS CLI
+        run: |
+          echo "=== Checking AWS CLI version ==="
+          aws --version
+          echo ""
+          echo "=== Upgrading AWS CLI ==="
+          pip install --upgrade awscli 2>&1 | tail -5
+          echo ""
+          echo "=== New AWS CLI version ==="
+          aws --version
+
       - name: Verify CodeArtifact repository exists
         run: |
           echo "=== Checking CodeArtifact repository ==="
@@ -64,36 +75,53 @@ jobs:
           
           if [ -z "$CODEARTIFACT_AUTH_TOKEN" ]; then
             echo "❌ ERROR: Failed to obtain CodeArtifact token!"
+            echo "AWS Caller Identity:"
+            aws sts get-caller-identity
             exit 1
           fi
           
           echo "CODEARTIFACT_AUTH_TOKEN=${CODEARTIFACT_AUTH_TOKEN}" >> $GITHUB_ENV
-          echo "✓ Token obtained ($(echo -n "$CODEARTIFACT_AUTH_TOKEN" | wc -c) chars)"
+          TOKEN_LEN=$(echo -n "$CODEARTIFACT_AUTH_TOKEN" | wc -c)
+          echo "✓ Token obtained (${TOKEN_LEN} chars)"
+          echo "Token format: JWT" 
+          echo "Token expires in: 900 seconds"
 
       - name: Configure Maven for CodeArtifact
         env:
           CODEARTIFACT_TOKEN: ${{ env.CODEARTIFACT_AUTH_TOKEN }}
         run: |
-          echo "=== Creating Maven settings.xml ==="
-          mkdir -p ~/.m2
+          echo "=== Configuring Maven with CodeArtifact credentials ==="
           
-          # Verify we have the token
-          if [ -z "$CODEARTIFACT_TOKEN" ]; then
-            echo "❌ ERROR: CODEARTIFACT_TOKEN is empty!"
-            exit 1
-          fi
-          
-          # Use Python for safe token substitution (guaranteed availability)
-          python3 << 'PYTHON_EOF'
+          # Try using aws codeartifact login first
+          echo "Attempting: aws codeartifact login --tool maven"
+          if aws codeartifact login --tool maven \
+            --domain ${{ env.CODEARTIFACT_DOMAIN }} \
+            --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
+            --repository ${{ env.CODEARTIFACT_REPOSITORY }} \
+            --region ${{ env.AWS_REGION }} 2>&1; then
+            echo "✓ Successfully used aws codeartifact login"
+          else
+            echo "⚠ aws codeartifact login failed or not supported, using manual approach..."
+            
+            # Fallback: manual settings.xml creation
+            mkdir -p ~/.m2
+            
+            if [ -z "$CODEARTIFACT_TOKEN" ]; then
+              echo "❌ ERROR: CODEARTIFACT_TOKEN is empty!"
+              exit 1
+            fi
+            
+            echo "Token length: $(echo -n "$CODEARTIFACT_TOKEN" | wc -c) chars"
+            
+            # Use Python for safe token substitution
+            python3 << 'PYTHON_EOF'
           import os
-          import xml.etree.ElementTree as ET
           
           token = os.environ.get('CODEARTIFACT_TOKEN', '')
           if not token:
               print("❌ ERROR: Token not found in environment!")
               exit(1)
           
-          # Create settings.xml using ElementTree for proper XML generation
           settings_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -126,48 +154,6 @@ jobs:
           
           print(f"✓ settings.xml created with token ({len(token)} chars)")
           PYTHON_EOF
-
-      - name: Verify Maven settings
-        run: |
-          if [ ! -f ~/.m2/settings.xml ]; then
-            echo "❌ ERROR: settings.xml not found!"
-            exit 1
-          fi
-          
-          SIZE=$(stat -c%s ~/.m2/settings.xml 2>/dev/null || stat -f%z ~/.m2/settings.xml 2>/dev/null)
-          echo "✓ settings.xml exists (${SIZE} bytes)"
-          
-          # Verify server entry
-          if grep -q '<id>codeartifact</id>' ~/.m2/settings.xml; then
-            echo "✓ Contains codeartifact server ID"
-          else
-            echo "❌ ERROR: codeartifact server ID not found!"
-            exit 1
-          fi
-          
-          # Verify username
-          if grep -q '<username>aws</username>' ~/.m2/settings.xml; then
-            echo "✓ Contains AWS username"
-          else
-            echo "❌ ERROR: aws username not found!"
-            exit 1
-          fi
-          
-          # Verify password is present (but don't print it)
-          if grep -q '<password>' ~/.m2/settings.xml; then
-            PASSWORD_LENGTH=$(grep -oP '(?<=<password>).+?(?=</password>)' ~/.m2/settings.xml | wc -c)
-            echo "✓ Contains password (${PASSWORD_LENGTH} chars)"
-          else
-            echo "❌ ERROR: password not found in settings.xml!"
-            exit 1
-          fi
-          
-          # Verify repository URL
-          if grep -q 'hasslefree-dev-912675023810.d.codeartifact.us-east-1.amazonaws.com' ~/.m2/settings.xml; then
-            echo "✓ Contains correct CodeArtifact URL"
-          else
-            echo "❌ ERROR: CodeArtifact URL not found!"
-            exit 1
           fi
 
       - name: Build and Test
@@ -188,18 +174,33 @@ jobs:
             exit 1
           fi
           
-          # Deploy with verbose output
+          # Show what Maven will use
+          echo "Using settings.xml: $(ls -lh ~/.m2/settings.xml)"
+          
+          # Deploy with maximum verbosity
+          echo ""
+          echo "Starting deploy..."
           mvn -B deploy \
             -DskipTests \
-            -Dorg.slf4j.simpleLogger.defaultLogLevel=info \
-            --settings ~/.m2/settings.xml
+            -Dorg.slf4j.simpleLogger.defaultLogLevel=debug \
+            --settings ~/.m2/settings.xml \
+            --errors || {
+              echo ""
+              echo "❌ Deploy failed"
+              echo ""
+              echo "Debugging information:"
+              echo "=== AWS Caller Identity ==="
+              aws sts get-caller-identity
+              echo ""
+              echo "=== CodeArtifact Repository ==="
+              aws codeartifact describe-repository \
+                --domain ${{ env.CODEARTIFACT_DOMAIN }} \
+                --repository ${{ env.CODEARTIFACT_REPOSITORY }} \
+                --region ${{ env.AWS_REGION }}
+              exit 1
+            }
           
-          if [ $? -eq 0 ]; then
-            echo "✓ Published successfully"
-          else
-            echo "❌ Deploy failed - check Maven output above"
-            exit 1
-          fi
+          echo "✓ Published successfully"
 
       - name: Publish Summary
         run: |

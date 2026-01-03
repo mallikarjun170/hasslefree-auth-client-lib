@@ -15,7 +15,7 @@ jobs:
     uses: ./.github/workflows/publish-codeartifact.yml
     secrets: inherit
     with:
-      domain: hasslefree
+      domain: hasslefree-dev
       repository: maven
       aws_region: us-east-1
 

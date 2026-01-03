@@ -1,0 +1,155 @@
+name: Publish to AWS CodeArtifact (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      domain:
+        description: 'CodeArtifact domain'
+        required: false
+        default: 'hasslefree'
+        type: string
+      repository:
+        description: 'CodeArtifact repository'
+        required: false
+        default: 'maven'
+        type: string
+      aws_region:
+        description: 'AWS region'
+        required: false
+        default: 'us-east-1'
+        type: string
+
+env:
+  AWS_ACCOUNT_ID: 912675023810
+  PROJECT_NAME: hasslefree
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to CodeArtifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.PROJECT_NAME }}-github-actions-role
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: github-${{ github.actor }}-${{ github.run_id }}-codeartifact
+
+      - name: Verify CodeArtifact repository exists
+        run: |
+          echo "=== Verifying CodeArtifact Repository ==="
+          aws codeartifact describe-repository \
+            --domain ${{ inputs.domain }} \
+            --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
+            --repository ${{ inputs.repository }} \
+            --region ${{ inputs.aws_region }} \
+            --query 'repository.repositoryName' \
+            --output text
+          echo "✅ Repository verified"
+
+      - name: Get CodeArtifact token and configure Maven
+        run: |
+          echo "=== Obtaining CodeArtifact token ==="
+          CODEARTIFACT_TOKEN=$(aws codeartifact get-authorization-token \
+            --domain ${{ inputs.domain }} \
+            --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
+            --region ${{ inputs.aws_region }} \
+            --duration-seconds 900 \
+            --query authorizationToken \
+            --output text)
+          
+          if [ -z "$CODEARTIFACT_TOKEN" ]; then
+            echo "❌ ERROR: Failed to obtain CodeArtifact token!"
+            aws sts get-caller-identity
+            exit 1
+          fi
+          
+          echo "✅ Token obtained"
+          
+          # Export variables for envsubst
+          export CODEARTIFACT_TOKEN
+          export CODEARTIFACT_DOMAIN=${{ inputs.domain }}
+          export AWS_ACCOUNT_ID=${{ env.AWS_ACCOUNT_ID }}
+          export AWS_REGION=${{ inputs.aws_region }}
+          
+          # Check if settings template exists in repo, otherwise create default
+          if [ -f .github/maven-settings.xml ]; then
+            echo "✅ Using settings.xml from .github/maven-settings.xml"
+            mkdir -p ~/.m2
+            envsubst < .github/maven-settings.xml > ~/.m2/settings.xml
+          else
+            echo "⚠️  No .github/maven-settings.xml found, using default configuration"
+            mkdir -p ~/.m2
+            aws codeartifact login --tool maven \
+              --domain ${{ inputs.domain }} \
+              --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
+              --repository ${{ inputs.repository }} \
+              --region ${{ inputs.aws_region }}
+          fi
+          
+          # Verify settings.xml was created
+          if [ -f ~/.m2/settings.xml ]; then
+            echo "✅ Maven settings.xml configured"
+            FILE_SIZE=$(stat -c%s ~/.m2/settings.xml 2>/dev/null || echo "unknown")
+            echo "   File size: ${FILE_SIZE} bytes"
+          else
+            echo "⚠️  settings.xml not found, Maven will use default or AWS login result"
+          fi
+
+      - name: Build and Test
+        run: |
+          echo "=== Building and Testing ==="
+          mvn -B -ntp clean verify
+          echo "✅ Build and tests passed"
+
+      - name: Publish to CodeArtifact
+        run: |
+          echo "=== Publishing to CodeArtifact ==="
+          echo "Domain: ${{ inputs.domain }}"
+          echo "Repository: ${{ inputs.repository }}"
+          echo "Region: ${{ inputs.aws_region }}"
+          echo ""
+          
+          mvn -B deploy -DskipTests 2>&1 | tee /tmp/mvn_deploy.log
+          
+          if [ ${PIPESTATUS[0]} -eq 0 ]; then
+            echo ""
+            echo "✅ Published successfully to CodeArtifact"
+          else
+            echo ""
+            echo "❌ Deploy failed"
+            echo ""
+            echo "=== Maven error summary ==="
+            grep -i "\[ERROR\]" /tmp/mvn_deploy.log | tail -10 || true
+            echo ""
+            echo "=== AWS Caller Identity ==="
+            aws sts get-caller-identity
+            exit 1
+          fi
+
+      - name: Publish Summary
+        if: success()
+        run: |
+          echo "## ✅ Published to CodeArtifact" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "| Key | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Domain | ${{ inputs.domain }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Repository | ${{ inputs.repository }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Region | ${{ inputs.aws_region }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Account | ${{ env.AWS_ACCOUNT_ID }} |" >> $GITHUB_STEP_SUMMARY

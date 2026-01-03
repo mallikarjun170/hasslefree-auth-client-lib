@@ -12,7 +12,7 @@ permissions:
 jobs:
   publish:
     name: Publish auth-client-lib to CodeArtifact
-    uses: mallikarjun170/hasslefree-cicd/.github/workflows/publish-codeartifact.yml@main
+    uses: ./.github/workflows/publish-codeartifact.yml
     secrets: inherit
     with:
       domain: hasslefree

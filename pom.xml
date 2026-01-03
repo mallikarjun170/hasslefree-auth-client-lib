@@ -9,11 +9,20 @@
 
     <name>hasslefree-auth-client-lib</name>
     <description>A shared library for authentication and authorization services</description>
+
+    <!-- Properties for CodeArtifact configuration -->
+    <properties>
+        <codeartifact.domain>hasslefree</codeartifact.domain>
+        <codeartifact.region>us-east-1</codeartifact.region>
+        <aws.account.id>912675023810</aws.account.id>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
     <distributionManagement>
         <repository>
             <id>codeartifact</id>
             <name>CodeArtifact Repository</name>
-            <url>https://hasslefree-dev-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
+            <url>https://${codeartifact.domain}-${aws.account.id}.d.codeartifact.${codeartifact.region}.amazonaws.com/maven/maven/</url>
         </repository>
     </distributionManagement>
 
@@ -21,7 +30,7 @@
         <repository>
             <id>codeartifact</id>
             <name>CodeArtifact Repository</name>
-            <url>https://hasslefree-dev-912675023810.d.codeartifact.us-east-1.amazonaws.com/maven/maven/</url>
+            <url>https://${codeartifact.domain}-${aws.account.id}.d.codeartifact.${codeartifact.region}.amazonaws.com/maven/maven/</url>
         </repository>
         <repository>
             <id>central</id>

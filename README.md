@@ -52,6 +52,12 @@ public class SecurityConfig {
 </dependencies>
 ```
 
+## Shared HTTP Helpers
+
+- Extend `BaseApiExceptionHandler` from your service's `@ControllerAdvice` to reuse the standard `ApiErrorResponse` shape, MDC helpers, and sanitized logging.
+- Register `CorrelationIdFilter` (it already sets `X-Correlation-Id` + MDC + response header) so every request carries a trace ID.
+- Use `ApiResponse`, `ApiErrorResponse`, and `ApiResponses` to keep success/error envelopes uniform across services.
+
 ### 2. Configure Application
 
 ```yaml

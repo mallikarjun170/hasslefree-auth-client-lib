@@ -105,6 +105,12 @@
             <artifactId>spring-security-web</artifactId>
             <version>6.3.5</version>
         </dependency>
+        <!-- Spring Web for OncePerRequestFilter -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <version>6.1.9</version>
+        </dependency>
         <!-- Spring Security OAuth2 Resource Server for Jwt support -->
         <dependency>
             <groupId>org.springframework.security</groupId>

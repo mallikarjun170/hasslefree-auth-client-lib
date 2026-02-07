@@ -3,6 +3,8 @@ package com.hasslefree.auth.common.resolver;
 import com.hasslefree.auth.common.annotation.AuthContext;
 import com.hasslefree.auth.common.dto.AuthenticationContext;
 import com.hasslefree.auth.common.util.AuthContextExtractor;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -90,11 +92,27 @@ public class AuthContextResolver implements HandlerMethodArgumentResolver {
             return null;
         }
         
-        @SuppressWarnings("deprecation")
-        AuthenticationContext context = AuthContextExtractor.extractFromToken(authHeader);
-        if (context != null) {
-            logger.debug("Resolved AuthenticationContext from Authorization header (legacy) for user: {}", context.getUserId());
+        // Parse the token manually and extract context
+        try {
+            // Remove "Bearer " prefix if present
+            String token = authHeader;
+            if (authHeader.startsWith("Bearer ")) {
+                token = authHeader.substring(7);
+            }
+            
+            // Parse the JWT token using Nimbus library
+            SignedJWT signedJWT = SignedJWT.parse(token);
+            JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
+            
+            // Extract context from claims using public method
+            AuthenticationContext context = AuthContextExtractor.extractFromClaims(claims, token);
+            if (context != null) {
+                logger.debug("Resolved AuthenticationContext from Authorization header (legacy) for user: {}", context.getUserId());
+            }
+            return context;
+        } catch (Exception e) {
+            logger.error("Failed to parse JWT token from Authorization header", e);
+            return null;
         }
-        return context;
     }
 }

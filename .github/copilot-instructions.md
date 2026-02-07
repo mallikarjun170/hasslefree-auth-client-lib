@@ -97,6 +97,80 @@ try {
 4. **Javadoc**: All public APIs fully documented with examples and exception documentation
 5. **Code Quality**: Checkstyle enforces Google style; SpotBugs flags potential bugs; no warnings allowed
 
+### 🚨 CRITICAL: Spring AOP Proxy Rules (for consuming services)
+
+**When this library is used in Spring applications (`auth-service`, `app-service`), NEVER call methods with Spring annotations (`@Transactional`, `@Async`, `@Cacheable`, `@Retryable`) via `this.` in the same class.** Spring uses proxies for these annotations, and direct calls bypass the proxy.
+
+#### ❌ WRONG - Proxy Bypass (annotations won't work):
+```java
+@Service
+public class TokenValidationService {
+    @Cacheable("tokens")
+    public void validateToken(String token) {
+        parseAndValidate(token);  // Direct call - @Cacheable won't work!
+    }
+    
+    @Cacheable("parsedTokens")
+    public void parseAndValidate(String token) {
+        jwtTokenValidator.validate(token);
+    }
+}
+```
+
+#### ✅ CORRECT Solutions:
+
+**Option 1: Merge methods** (preferred for simple cases)
+```java
+@Service
+public class TokenValidationService {
+    @Cacheable("tokens")
+    public void validateToken(String token) {
+        // All logic in one method
+        jwtTokenValidator.validate(token);
+        auditLog.save(new TokenValidation(token));
+    }
+}
+```
+
+**Option 2: Extract to private method** (for code reuse)
+```java
+@Service
+public class TokenValidationService {
+    @Cacheable("tokens")
+    public void validateToken(String token) {
+        performValidation(token);  // Private method - no annotation
+    }
+    
+    @Async
+    @Transactional
+    public void validateTokenAsync(String token) {
+        performValidation(token);  // Same private method
+    }
+    
+    // No Spring annotations - called internally
+    private void performValidation(String token) {
+        jwtTokenValidator.validate(token);
+    }
+}
+```
+
+#### Common Violations to Watch (in consuming services):
+- ❌ `@Async` method calling `@Transactional` method in same class
+- ❌ `@Transactional` method calling another `@Transactional` method in same class
+- ❌ `@Cacheable` method calling another `@Cacheable` method in same class
+- ❌ Public method calling `@Scheduled` method in same class
+
+#### Related SonarQube Rules:
+- **S2229**: Methods should not call same-class methods with incompatible `@Transactional` values
+- **S3864**: `Stream.peek()` should not change state (similar proxy issue)
+
+**Remember**: If Spring needs to intercept it (security, transactions, caching, async, scheduling), either:
+1. Call it from another class, OR
+2. Merge the logic, OR
+3. Extract to private non-annotated method
+
+**Note**: This library itself is framework-agnostic and doesn't use Spring annotations, but consumers should follow these rules.
+
 ## Cross-Component Communication
 
 - **Used by**: `auth-service` (filter/validator), `app-service` (auth middleware)

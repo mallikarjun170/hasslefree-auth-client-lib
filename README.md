@@ -204,10 +204,6 @@ if (auth instanceof JwtAuthenticationToken) {
     Jwt jwt = ((JwtAuthenticationToken) auth).getToken();
     AuthenticationContext context = AuthContextExtractor.extractFromJwt(jwt);
 }
-
-// Legacy: Direct token parsing (no validation)
-@Deprecated
-AuthenticationContext context = AuthContextExtractor.extractFromToken(authHeader);
 ```
 
 ---
@@ -306,7 +302,6 @@ The following components are kept for backward compatibility but should NOT be u
 
 - `JwtAuthenticationFilter` → Use Spring OAuth2 Resource Server
 - `JwtTokenValidator` → Use Spring's automatic JWT validation
-- `AuthContextExtractor.extractFromToken(String)` → Use `extractFromJwt(Jwt)`
 
 ---
 

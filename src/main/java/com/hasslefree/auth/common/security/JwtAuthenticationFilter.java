@@ -3,7 +3,6 @@ package com.hasslefree.auth.common.security;
 import com.nimbusds.jwt.SignedJWT;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.hasslefree.auth.common.util.JwtTokenValidator;
-import org.springframework.lang.NonNull;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,15 +34,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
+    protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
         return path.startsWith("/actuator/health") || path.startsWith("/v3/api-docs");
     }
 
     @Override
-    protected void doFilterInternal(@NonNull HttpServletRequest request,
-                                    @NonNull HttpServletResponse response,
-                                    @NonNull FilterChain filterChain)
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain)
         throws ServletException, IOException {
         String authHeader = request.getHeader("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {

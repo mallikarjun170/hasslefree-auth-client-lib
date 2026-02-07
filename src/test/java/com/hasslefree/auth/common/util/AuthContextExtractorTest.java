@@ -15,12 +15,6 @@ class AuthContextExtractorTest {
     }
 
     @Test
-    void extractFromToken_nullOrEmpty_returnsNull() {
-        assertNull(AuthContextExtractor.extractFromToken(null));
-        assertNull(AuthContextExtractor.extractFromToken(""));
-    }
-
-    @Test
     void extractFromClaims_validClaims_returnsContext() throws Exception {
         JWTClaimsSet claims = new JWTClaimsSet.Builder()
                 .subject("user123")

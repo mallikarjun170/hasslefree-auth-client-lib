@@ -3,7 +3,6 @@ package com.hasslefree.auth.common.util;
 import com.hasslefree.auth.common.dto.AuthenticationContext;
 import com.hasslefree.auth.common.enums.UserRole;
 import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.SignedJWT;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,12 +11,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import static com.hasslefree.auth.common.constants.ClaimConstants.*;
+
 /**
  * Utility class for extracting authentication context from JWT tokens.
  * This class provides methods to parse tokens and extract user information
  * that can be used across all microservices.
  * 
- * <p><b>IMPORTANT:</b> For HassleFree services, prefer extractFromJwt(Jwt) over extractFromToken(String).
+ * <p><b>IMPORTANT:</b> For HassleFree services, prefer extractFromJwt(Jwt).
  * Spring Security's OAuth2 Resource Server validates the JWT, so use the verified Jwt object from SecurityContext.
  */
 /**
@@ -32,21 +33,6 @@ import java.util.Set;
  */
 public final class AuthContextExtractor {
     private static final Logger logger = LoggerFactory.getLogger(AuthContextExtractor.class);
-
-    // JWT Claim name constants
-    private static final String CLAIM_CUSTOM_USER_ID = "custom:userId";
-    private static final String CLAIM_SUB = "sub";
-    private static final String CLAIM_USERNAME = "username";
-    private static final String CLAIM_COGNITO_USERNAME = "cognito:username";
-    private static final String CLAIM_EMAIL = "email";
-    private static final String CLAIM_COGNITO_GROUPS = "cognito:groups";
-    private static final String CLAIM_GROUPS = "groups";
-    private static final String CLAIM_ROLES = "roles";
-    private static final String CLAIM_AUTHORITIES = "authorities";
-    private static final String CLAIM_CUSTOM_ROLE = "custom:role";
-    private static final String CLAIM_CUSTOM_ROLES = "custom:roles";
-    private static final String CLAIM_EXP = "exp";
-    private static final String CLAIM_ROLE_PREFIX = "ROLE_";
 
     // Prevent instantiation
     private AuthContextExtractor() { throw new AssertionError("No instance allowed"); }
@@ -135,23 +121,34 @@ public final class AuthContextExtractor {
             // Extract expiration time
             Object expObj = claims.get(CLAIM_EXP);
             Long expirationTime = null;
-            if (expObj instanceof Number) {
-                expirationTime = ((Number) expObj).longValue() * 1000; // Convert seconds to milliseconds
+            if (expObj instanceof Number number) {
+                expirationTime = number.longValue() * 1000; // Convert seconds to milliseconds
             }
             
             // Get token value (masked for security)
-            String tokenValue = null;
-            try {
-                Object tokenValueObj = jwtClass.getMethod("getTokenValue").invoke(jwt);
-                tokenValue = maskToken((String) tokenValueObj);
-            } catch (Exception e) {
-                logger.debug("Could not extract token value for masking", e);
-            }
+            String tokenValue = extractTokenValue(jwt, jwtClass);
             
             return new AuthenticationContext(userId, username, email, roles, tokenValue, expirationTime);
             
         } catch (Exception e) {
             logger.error("Failed to extract context from JWT claims", e);
+            return null;
+        }
+    }
+    
+    /**
+     * Extract and mask the token value from Spring Security Jwt object.
+     * 
+     * @param jwt The Spring Security Jwt object
+     * @param jwtClass The Jwt class (for reflection)
+     * @return Masked token value, or null if extraction fails
+     */
+    private static String extractTokenValue(Object jwt, Class<?> jwtClass) {
+        try {
+            Object tokenValueObj = jwtClass.getMethod("getTokenValue").invoke(jwt);
+            return maskToken((String) tokenValueObj);
+        } catch (Exception e) {
+            logger.debug("Could not extract token value for masking", e);
             return null;
         }
     }
@@ -233,8 +230,8 @@ public final class AuthContextExtractor {
      * @return Masked token string
      */
     private static String maskToken(String token) {
-        if (token == null || token.length() < 10) return "***";
-        return token.substring(0, 3) + "..." + token.substring(token.length() - 3);
+        if (token == null || token.length() < TOKEN_MASKING_THRESHOLD) return "***";
+        return token.substring(0, TOKEN_MASKING_CHAR_COUNT) + "..." + token.substring(token.length() - TOKEN_MASKING_CHAR_COUNT);
     }
 
     /**
@@ -377,43 +374,4 @@ public final class AuthContextExtractor {
         }
     }
 
-    /**
-     * Extract authentication context from Authorization header token string.
-     * 
-     * <p><b>LEGACY METHOD:</b> This method is provided for backward compatibility.
-     * It parses the token directly without Spring Security validation.
-     * 
-     * <p><b>RECOMMENDED:</b> Use {@link #extractFromJwt(Object)} instead when using Spring OAuth2 Resource Server.
-     * 
-     * @param authHeader The Authorization header value (e.g., "Bearer eyJhbGc...")
-     * @return AuthenticationContext containing user information
-     * @deprecated Use extractFromJwt(Object) with Spring Security's validated Jwt instead
-     */
-    @Deprecated
-    public static AuthenticationContext extractFromToken(String authHeader) {
-        try {
-            if (authHeader == null || authHeader.isBlank()) {
-                logger.warn("Authorization header is null or blank");
-                return null;
-            }
-            
-            // Remove "Bearer " prefix if present
-            String token = authHeader;
-            if (authHeader.startsWith("Bearer ")) {
-                token = authHeader.substring(7);
-            }
-            
-            // Parse the JWT token
-            SignedJWT signedJWT = SignedJWT.parse(token);
-            JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
-            
-            // Extract context from claims
-            return extractFromClaims(claims, token);
-            
-        } catch (ParseException e) {
-            logger.error("Failed to parse JWT token", e);
-            return null;
-        }
-    }
-    
 }

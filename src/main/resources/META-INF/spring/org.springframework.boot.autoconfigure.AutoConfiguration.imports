@@ -1,1 +1,2 @@
 com.hasslefree.auth.client.config.AuthzClientAutoConfiguration
+com.hasslefree.auth.client.spring.config.AuthClientAutoConfiguration

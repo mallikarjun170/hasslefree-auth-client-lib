@@ -1,39 +1,44 @@
 # HassleFree Auth Client Library
 
-Production-ready Spring Boot 3+ auth client library for **access-grant / permission-based** authorization.
+Spring Boot 3+ library for permission and access-grant based authorization.
 
-## Design choices
+## Scope and Principles
 
-- JWT validation is handled by **Spring Security Resource Server**.
-- This library **does not** validate JWT signatures.
-- This library adapts `Authentication/Jwt` into immutable `AuthContext`.
-- Authorization checks are permission/access-grant based only.
+- JWT validation is done by Spring Security Resource Server.
+- This library does not validate JWT signatures.
+- This library adapts verified `Authentication`/`Jwt` to immutable `AuthContext`.
+- Authorization is permission/access-grant based only (no roles).
 
 ## Public API
 
-- `com.hasslefree.auth.client.context.AuthContext` (immutable)
+- `com.hasslefree.auth.client.context.AuthContext`
 - `com.hasslefree.auth.client.access.Permission`
 - `com.hasslefree.auth.client.access.AccessGrant`
 - `com.hasslefree.auth.client.authorization.Authorization`
-  - `has(...)`
-  - `hasAny(...)`
-  - `hasAll(...)`
-  - `requireAny(...)`
-  - `requireAll(...)`
-- Exceptions:
-  - `UnauthorizedException`
-  - `ForbiddenException`
-  - `BadRequestException`
+  - `has(...)`, `hasAny(...)`, `hasAll(...)`
+  - `requireAny(...)`, `requireAll(...)`
+- `com.hasslefree.auth.client.authorization.AuthorizationClient`
 
-## Spring starter integration
+Exceptions:
+- `UnauthorizedException`
+- `ForbiddenException`
+- `BadRequestException`
 
-Auto-config registers:
+## Spring Boot Auto-Configuration
 
-- `AuthContextArgumentResolver` for injecting `AuthContext`
-- optional `AuthContextRequestFilter` (request-scoped attribute)
-- `@RequireGrants` enforcement via AOP aspect
+Registered automatically:
+- `AuthContextArgumentResolver` (`@CurrentAuthContext AuthContext`)
+- Optional `AuthContextRequestFilter`
+- `@RequireGrants` AOP enforcement
+- `AuthorizationClient` (service-to-service permission check client)
 
-Enable Spring Resource Server in each service (required):
+Auto-configuration imports:
+- `com.hasslefree.auth.client.spring.config.AuthClientAutoConfiguration`
+- `com.hasslefree.auth.client.config.AuthorizationClientAutoConfiguration`
+
+## Configuration
+
+### 1) Resource Server (required in each service)
 
 ```yaml
 spring:
@@ -44,7 +49,7 @@ spring:
           issuer-uri: https://cognito-idp.us-east-1.amazonaws.com/<userPoolId>
 ```
 
-Library properties:
+### 2) Auth-context extraction and enforcement
 
 ```yaml
 hasslefree:
@@ -67,7 +72,24 @@ hasslefree:
       enabled: true
 ```
 
-## Usage in app-service
+### 3) Authorization client (optional, for remote permission checks)
+
+```yaml
+hasslefree:
+  auth:
+    authorization-client:
+      base-url: http://localhost:8080
+      internal-api-key: ${AUTHORIZATION_INTERNAL_API_KEY}
+      cache:
+        ttl-seconds: 60
+        max-size: 10000
+```
+
+## Multi-Service Usage
+
+### app-service (business API service)
+
+Use request-context injection plus declarative checks:
 
 ```java
 import com.hasslefree.auth.client.context.AuthContext;
@@ -81,41 +103,47 @@ class PropertyController {
   @GetMapping("/{id}")
   @RequireGrants(anyOf = {"property.read"})
   PropertyDto getProperty(@PathVariable String id, @CurrentAuthContext AuthContext authContext) {
-    // authContext.subject(), authContext.permissions(), authContext.claims()
     return service.read(id, authContext.subject());
   }
 }
 ```
 
-## Usage in auth-service
+Use `AuthorizationClient` only when you need centralized remote check semantics:
 
 ```java
+import com.hasslefree.auth.client.authorization.AuthorizationClient;
+
+boolean allowed = authorizationClient.checkPermission(userId, "PROPERTY", propertyId, "PROPERTY_READ");
+```
+
+### auth-service
+
+Use the same context model and helper API in internal endpoints:
+
+```java
+import com.hasslefree.auth.client.authorization.Authorization;
 import com.hasslefree.auth.client.context.AuthContext;
 import com.hasslefree.auth.client.spring.annotation.CurrentAuthContext;
-import com.hasslefree.auth.client.authorization.Authorization;
 
-@RestController
-@RequestMapping("/api/me")
-class MeController {
-
-  @GetMapping
-  MeResponse me(@CurrentAuthContext AuthContext authContext) {
-    Authorization.requireAny(authContext, "profile.read", "tenant.read");
-    return meService.buildResponse(authContext.subject());
-  }
+@GetMapping("/api/me")
+MeResponse me(@CurrentAuthContext AuthContext authContext) {
+  Authorization.requireAny(authContext, "profile.read", "tenant.read");
+  return meService.buildResponse(authContext.subject());
 }
 ```
 
-## Migration notes
+### Any additional service
 
-- Replace `AuthenticationContext` with `AuthContext`.
-- Remove custom JWT token validators/filters.
-- Keep JWT validation in Spring Resource Server only.
-- Replace privilege checks with permission/access-grant checks.
-- Prefer `@CurrentAuthContext` for parameter injection.
-- Optional: `@RequireGrants(anyOf=..., allOf=...)` for method enforcement.
+Adopt in this order:
+1. Enable Spring Resource Server JWT validation.
+2. Add `hasslefree.auth.*` claim extraction config.
+3. Replace custom principal objects with `AuthContext`.
+4. Enforce grants via `@RequireGrants` and/or `Authorization` helpers.
+5. Add `AuthorizationClient` config only if remote checks are needed.
 
-## Error response standard
+## Migration Notes
 
-This library exposes exceptions and does not enforce HTTP response mapping.
-Map exceptions in each service to `application/problem+json` (recommended).
+- Use `Authorization` (not `Authz`) naming.
+- Use `AuthorizationClient` + `hasslefree.auth.authorization-client.*` properties.
+- Remove any role-based checks; enforce permissions/access-grants only.
+- Keep exception-to-HTTP mapping in each service (recommended: `application/problem+json`).

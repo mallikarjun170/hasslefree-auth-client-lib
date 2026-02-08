@@ -3,12 +3,8 @@ package com.hasslefree.auth.common.util;
 import static com.hasslefree.auth.common.constants.ClaimConstants.*;
 
 import com.hasslefree.auth.common.dto.AuthenticationContext;
-import com.hasslefree.auth.common.enums.UserRole;
 import com.nimbusds.jwt.JWTClaimsSet;
 import java.text.ParseException;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,14 +12,13 @@ import org.slf4j.LoggerFactory;
  * Production-ready utility for extracting authentication context from JWT tokens.
  *
  * <p>Security: No secrets in logs, tokens masked, signature/algorithm validation stub provided.
- * Performance: Null checks, efficient role extraction, thread-safe.
+ * Performance: Null checks, thread-safe.
  *
  * <p><b>RECOMMENDED USAGE FOR SPRING OAUTH2 RESOURCE SERVER:</b> Use {@link
  * #extractFromJwt(Object)} with Spring Security's verified Jwt object. This ensures you're working
  * with an already-validated token from SecurityContext.
  *
- * <p><b>Deprecation notice:</b> Role extraction is retained for backward compatibility only.
- * HassleFree authorization is permission-based.
+ * <p><b>Note:</b> HassleFree authorization is permission-based and does not use roles.
  */
 public final class AuthContextExtractor {
   private static final Logger logger = LoggerFactory.getLogger(AuthContextExtractor.class);
@@ -116,9 +111,6 @@ public final class AuthContextExtractor {
       // Extract email
       String email = (String) claims.get(CLAIM_EMAIL);
 
-      // Extract roles
-      Set<UserRole> roles = extractRolesFromClaims(claims);
-
       // Extract expiration time
       Object expObj = claims.get(CLAIM_EXP);
       Long expirationTime = null;
@@ -129,8 +121,7 @@ public final class AuthContextExtractor {
       // Get token value (masked for security)
       String tokenValue = extractTokenValue(jwt, jwtClass);
 
-      return new AuthenticationContext(
-          userId, username, email, roles, tokenValue, expirationTime, null);
+      return new AuthenticationContext(userId, username, email, tokenValue, expirationTime, null);
 
     } catch (Exception e) {
       logger.error("Failed to extract context from JWT claims", e);
@@ -153,44 +144,6 @@ public final class AuthContextExtractor {
       logger.debug("Could not extract token value for masking", e);
       return null;
     }
-  }
-
-  /** Extract roles from JWT claims map (for Spring Security Jwt). */
-  private static Set<UserRole> extractRolesFromClaims(java.util.Map<String, Object> claims) {
-    Set<UserRole> roles = new HashSet<>();
-
-    try {
-      String[] possibleRoleClaims = {
-        CLAIM_COGNITO_GROUPS,
-        CLAIM_GROUPS,
-        CLAIM_ROLES,
-        CLAIM_AUTHORITIES,
-        CLAIM_CUSTOM_ROLE,
-        CLAIM_CUSTOM_ROLES
-      };
-
-      for (String claimName : possibleRoleClaims) {
-        Object roleClaim = claims.get(claimName);
-        if (roleClaim != null) {
-          Set<UserRole> extractedRoles = parseRoleClaim(roleClaim);
-          if (!extractedRoles.isEmpty()) {
-            roles.addAll(extractedRoles);
-            break;
-          }
-        }
-      }
-
-      if (roles.isEmpty()) {
-        logger.debug("No roles found in token, assigning default TENANT role");
-        roles.add(UserRole.TENANT);
-      }
-
-    } catch (Exception e) {
-      logger.error("Error extracting roles from claims", e);
-      roles.add(UserRole.TENANT);
-    }
-
-    return roles;
   }
 
   /**
@@ -216,11 +169,10 @@ public final class AuthContextExtractor {
       String userId = claims.getSubject();
       String username = claims.getStringClaim(CLAIM_USERNAME);
       String email = claims.getStringClaim(CLAIM_EMAIL);
-      Set<UserRole> roles = extractRoles(claims);
       Long expirationTime =
           claims.getExpirationTime() != null ? claims.getExpirationTime().getTime() : null;
       return new AuthenticationContext(
-          userId, username, email, roles, maskToken(token), expirationTime, null);
+          userId, username, email, maskToken(token), expirationTime, null);
     } catch (ParseException e) {
       logger.error("Failed to extract claims from token", e);
       return null;
@@ -238,145 +190,5 @@ public final class AuthContextExtractor {
     return token.substring(0, TOKEN_MASKING_CHAR_COUNT)
         + "..."
         + token.substring(token.length() - TOKEN_MASKING_CHAR_COUNT);
-  }
-
-  /**
-   * Extract user roles from JWT claims. Looks for roles in various possible claim names used by
-   * different identity providers.
-   *
-   * @param claims The JWT claims set
-   * @return Set of user roles
-   */
-  private static Set<UserRole> extractRoles(JWTClaimsSet claims) {
-    Set<UserRole> roles = new HashSet<>();
-
-    try {
-      // Try different possible claim names for roles
-      String[] possibleRoleClaims = {
-        CLAIM_COGNITO_GROUPS,
-        CLAIM_GROUPS,
-        CLAIM_ROLES,
-        CLAIM_AUTHORITIES,
-        CLAIM_CUSTOM_ROLE,
-        CLAIM_CUSTOM_ROLES
-      };
-
-      for (String claimName : possibleRoleClaims) {
-        Object roleClaim = claims.getClaim(claimName);
-        if (roleClaim != null) {
-          Set<UserRole> extractedRoles = parseRoleClaim(roleClaim);
-          if (!extractedRoles.isEmpty()) {
-            roles.addAll(extractedRoles);
-            break; // Use the first successful extraction
-          }
-        }
-      }
-
-      // If no roles found, assign default TENANT role
-      if (roles.isEmpty()) {
-        logger.debug("No roles found in token, assigning default TENANT role");
-        roles.add(UserRole.TENANT);
-      }
-
-    } catch (Exception e) {
-      logger.error("Error extracting roles from claims", e);
-      roles.add(UserRole.TENANT); // Default fallback
-    }
-
-    return roles;
-  }
-
-  /**
-   * Parse role claim object into UserRole set. Handles both string arrays and comma-separated
-   * strings.
-   *
-   * @param roleClaim The role claim object from JWT
-   * @return Set of parsed user roles
-   */
-  private static Set<UserRole> parseRoleClaim(Object roleClaim) {
-    Set<UserRole> roles = new HashSet<>();
-
-    try {
-      if (roleClaim instanceof List) {
-        roles.addAll(parseRoleList(roleClaim));
-      } else if (roleClaim instanceof String string) {
-        roles.addAll(parseRoleString(string));
-      }
-    } catch (Exception e) {
-      logger.error("Error parsing role claim: {}", roleClaim, e);
-    }
-
-    return roles;
-  }
-
-  /**
-   * Parse roles from a List claim.
-   *
-   * @param roleClaim The role claim object (must be a List)
-   * @return Set of parsed user roles
-   */
-  private static Set<UserRole> parseRoleList(Object roleClaim) {
-    Set<UserRole> roles = new HashSet<>();
-    @SuppressWarnings("unchecked")
-    List<String> roleList = (List<String>) roleClaim;
-
-    for (String roleStr : roleList) {
-      UserRole role = parseRole(roleStr);
-      if (role != null) {
-        roles.add(role);
-      }
-    }
-    return roles;
-  }
-
-  /**
-   * Parse roles from a String claim (handles single or comma-separated roles).
-   *
-   * @param roleString The role claim string
-   * @return Set of parsed user roles
-   */
-  private static Set<UserRole> parseRoleString(String roleString) {
-    Set<UserRole> roles = new HashSet<>();
-
-    if (roleString.contains(",")) {
-      String[] roleArray = roleString.split(",");
-      for (String roleStr : roleArray) {
-        UserRole role = parseRole(roleStr.trim());
-        if (role != null) {
-          roles.add(role);
-        }
-      }
-    } else {
-      UserRole role = parseRole(roleString);
-      if (role != null) {
-        roles.add(role);
-      }
-    }
-    return roles;
-  }
-
-  /**
-   * Parse a single role string into UserRole enum.
-   *
-   * @param roleStr The role string to parse
-   * @return UserRole enum value, or null if parsing fails
-   */
-  private static UserRole parseRole(String roleStr) {
-    if (roleStr == null || roleStr.trim().isEmpty()) {
-      return null;
-    }
-
-    try {
-      // Remove common prefixes
-      roleStr = roleStr.trim().toUpperCase();
-      if (roleStr.startsWith(CLAIM_ROLE_PREFIX)) {
-        roleStr = roleStr.substring(5);
-      }
-
-      return UserRole.valueOf(roleStr);
-    } catch (IllegalArgumentException e) {
-      logger.warn("Unknown role: {}", roleStr);
-      return null;
-    }
   }
 }

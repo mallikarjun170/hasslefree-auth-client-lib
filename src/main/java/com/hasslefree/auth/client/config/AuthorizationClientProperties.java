@@ -6,11 +6,11 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
-/** Configuration properties for the Authz HTTP client. */
-@ConfigurationProperties(prefix = "authz")
+/** Configuration properties for the Authorization HTTP client. */
+@ConfigurationProperties(prefix = "hasslefree.auth.authorization-client")
 @Validated
 @Data
-public class AuthzClientProperties {
+public class AuthorizationClientProperties {
 
   @NotBlank private String baseUrl;
 

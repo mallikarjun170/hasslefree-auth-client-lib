@@ -1,4 +1,4 @@
-package com.hasslefree.auth.client.authz;
+package com.hasslefree.auth.client.authorization;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -34,7 +34,7 @@ class AccessGrantEvaluatorTest {
   }
 
   @Test
-  void authzRequireHelpers_throwExpectedExceptions() {
+  void authorizationRequireHelpers_throwExpectedExceptions() {
     AuthContext context =
         new AuthContext(
             "subject-1",
@@ -43,13 +43,13 @@ class AccessGrantEvaluatorTest {
             List.of(AccessGrant.global("property.read")),
             Map.of());
 
-    assertThat(Authz.requireAll(context, "property.read")).isSameAs(context);
+    assertThat(Authorization.requireAll(context, "property.read")).isSameAs(context);
 
-    assertThatThrownBy(() -> Authz.requireAll(context, "property.read", "property.write"))
+    assertThatThrownBy(() -> Authorization.requireAll(context, "property.read", "property.write"))
         .isInstanceOf(ForbiddenException.class)
         .hasMessageContaining("property.write");
 
-    assertThatThrownBy(() -> Authz.requireAny(null, "property.read"))
+    assertThatThrownBy(() -> Authorization.requireAny(null, "property.read"))
         .isInstanceOf(UnauthorizedException.class);
   }
 }

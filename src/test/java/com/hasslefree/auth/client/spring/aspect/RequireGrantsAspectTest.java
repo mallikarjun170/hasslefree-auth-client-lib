@@ -6,7 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.hasslefree.auth.client.access.AccessGrant;
-import com.hasslefree.auth.client.authz.AccessGrantEvaluator;
+import com.hasslefree.auth.client.authorization.AccessGrantEvaluator;
 import com.hasslefree.auth.client.context.AuthContext;
 import com.hasslefree.auth.client.error.ForbiddenException;
 import com.hasslefree.auth.client.spring.annotation.RequireGrants;

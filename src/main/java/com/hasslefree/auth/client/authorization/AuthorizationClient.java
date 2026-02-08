@@ -1,9 +1,9 @@
-package com.hasslefree.auth.client.authz;
+package com.hasslefree.auth.client.authorization;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.hasslefree.auth.client.config.AuthzClientProperties;
-import com.hasslefree.auth.client.exception.AuthzClientException;
+import com.hasslefree.auth.client.config.AuthorizationClientProperties;
+import com.hasslefree.auth.client.exception.AuthorizationClientException;
 import com.hasslefree.auth.common.dto.PermissionCheckRequest;
 import jakarta.annotation.PostConstruct;
 import java.time.Duration;
@@ -20,10 +20,10 @@ import org.springframework.web.client.RestTemplate;
 
 @RequiredArgsConstructor
 @Slf4j
-public class AuthzClient {
+public class AuthorizationClient {
 
   private final RestTemplate restTemplate;
-  private final AuthzClientProperties properties;
+  private final AuthorizationClientProperties properties;
 
   private Cache<String, Boolean> permissionCache;
 
@@ -42,10 +42,10 @@ public class AuthzClient {
     validate(userId, resourceType, resourceId, permissionCode);
     String cacheKey = buildCacheKey(userId, resourceType, resourceId, permissionCode);
     return permissionCache.get(
-        cacheKey, key -> callAuthzService(userId, resourceType, resourceId, permissionCode));
+        cacheKey, key -> callAuthorizationService(userId, resourceType, resourceId, permissionCode));
   }
 
-  private boolean callAuthzService(
+  private boolean callAuthorizationService(
       UUID userId, String resourceType, UUID resourceId, String permissionCode) {
     PermissionCheckRequest request =
         new PermissionCheckRequest(userId, permissionCode, resourceType, resourceId);
@@ -60,16 +60,16 @@ public class AuthzClient {
     } catch (HttpClientErrorException ex) {
       if (ex.getStatusCode() == HttpStatus.FORBIDDEN) {
         log.debug(
-            "Authz denied for user {} on {}:{} ({})",
+            "Authorization denied for user {} on {}:{} ({})",
             userId,
             resourceType,
             resourceId,
             permissionCode);
         return false;
       }
-      throw new AuthzClientException("Unexpected authz response", ex);
+      throw new AuthorizationClientException("Unexpected authorization response", ex);
     } catch (RestClientException ex) {
-      throw new AuthzClientException("Failed to call authz service", ex);
+      throw new AuthorizationClientException("Failed to call authorization service", ex);
     }
   }
 

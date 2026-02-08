@@ -14,7 +14,7 @@ Production-ready Spring Boot 3+ auth client library for **access-grant / permiss
 - `com.hasslefree.auth.client.context.AuthContext` (immutable)
 - `com.hasslefree.auth.client.access.Permission`
 - `com.hasslefree.auth.client.access.AccessGrant`
-- `com.hasslefree.auth.client.authz.Authz`
+- `com.hasslefree.auth.client.authorization.Authorization`
   - `has(...)`
   - `hasAny(...)`
   - `hasAll(...)`
@@ -92,7 +92,7 @@ class PropertyController {
 ```java
 import com.hasslefree.auth.client.context.AuthContext;
 import com.hasslefree.auth.client.spring.annotation.CurrentAuthContext;
-import com.hasslefree.auth.client.authz.Authz;
+import com.hasslefree.auth.client.authorization.Authorization;
 
 @RestController
 @RequestMapping("/api/me")
@@ -100,7 +100,7 @@ class MeController {
 
   @GetMapping
   MeResponse me(@CurrentAuthContext AuthContext authContext) {
-    Authz.requireAny(authContext, "profile.read", "tenant.read");
+    Authorization.requireAny(authContext, "profile.read", "tenant.read");
     return meService.buildResponse(authContext.subject());
   }
 }

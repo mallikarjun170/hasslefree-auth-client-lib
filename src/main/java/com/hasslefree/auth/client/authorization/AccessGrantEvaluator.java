@@ -1,4 +1,4 @@
-package com.hasslefree.auth.client.authz;
+package com.hasslefree.auth.client.authorization;
 
 import com.hasslefree.auth.client.access.Permission;
 import com.hasslefree.auth.client.context.AuthContext;

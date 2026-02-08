@@ -1,6 +1,6 @@
 package com.hasslefree.auth.client.spring.config;
 
-import com.hasslefree.auth.client.authz.AccessGrantEvaluator;
+import com.hasslefree.auth.client.authorization.AccessGrantEvaluator;
 import com.hasslefree.auth.client.spring.aspect.RequireGrantsAspect;
 import com.hasslefree.auth.client.spring.context.CurrentAuthContextProvider;
 import com.hasslefree.auth.client.spring.extract.AccessGrantClaimParser;

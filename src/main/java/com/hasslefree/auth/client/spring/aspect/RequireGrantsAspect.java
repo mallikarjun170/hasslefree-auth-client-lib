@@ -1,6 +1,6 @@
 package com.hasslefree.auth.client.spring.aspect;
 
-import com.hasslefree.auth.client.authz.AccessGrantEvaluator;
+import com.hasslefree.auth.client.authorization.AccessGrantEvaluator;
 import com.hasslefree.auth.client.context.AuthContext;
 import com.hasslefree.auth.client.error.BadRequestException;
 import com.hasslefree.auth.client.error.ForbiddenException;

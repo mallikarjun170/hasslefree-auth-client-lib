@@ -1,4 +1,4 @@
-package com.hasslefree.auth.client.authz;
+package com.hasslefree.auth.client.authorization;
 
 import com.hasslefree.auth.client.context.AuthContext;
 import com.hasslefree.auth.client.error.ForbiddenException;
@@ -10,11 +10,11 @@ import java.util.Set;
 /**
  * Static helper methods for permission/access-grant checks.
  */
-public final class Authz {
+public final class Authorization {
 
   private static final AccessGrantEvaluator EVALUATOR = new AccessGrantEvaluator();
 
-  private Authz() {}
+  private Authorization() {}
 
   public static boolean has(AuthContext context, String permission) {
     return EVALUATOR.has(context, permission);

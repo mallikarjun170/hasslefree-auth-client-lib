@@ -30,8 +30,7 @@ public class AuthContextArgumentResolver implements HandlerMethodArgumentResolve
   @Override
   public boolean supportsParameter(@NonNull MethodParameter parameter) {
     return AuthContext.class.isAssignableFrom(parameter.getParameterType())
-        && (parameter.hasParameterAnnotation(CurrentAuthContext.class)
-            || parameter.hasParameterAnnotation(com.hasslefree.auth.common.annotation.AuthContext.class));
+        && parameter.hasParameterAnnotation(CurrentAuthContext.class);
   }
 
   @Override

@@ -8,7 +8,6 @@
         <version>1.0.0-SNAPSHOT</version>
         <relativePath/>
     </parent>
-    <groupId>com.hasslefree</groupId>
     <artifactId>auth-client-lib</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>jar</packaging>

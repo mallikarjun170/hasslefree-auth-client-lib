@@ -13,13 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Utility class for extracting authentication context from JWT tokens. This class provides methods
- * to parse tokens and extract user information that can be used across all microservices.
- *
- * <p><b>IMPORTANT:</b> For HassleFree services, prefer extractFromJwt(Jwt). Spring Security's
- * OAuth2 Resource Server validates the JWT, so use the verified Jwt object from SecurityContext.
- */
-/**
  * Production-ready utility for extracting authentication context from JWT tokens.
  *
  * <p>Security: No secrets in logs, tokens masked, signature/algorithm validation stub provided.
@@ -28,6 +21,9 @@ import org.slf4j.LoggerFactory;
  * <p><b>RECOMMENDED USAGE FOR SPRING OAUTH2 RESOURCE SERVER:</b> Use {@link
  * #extractFromJwt(Object)} with Spring Security's verified Jwt object. This ensures you're working
  * with an already-validated token from SecurityContext.
+ *
+ * <p><b>Deprecation notice:</b> Role extraction is retained for backward compatibility only.
+ * HassleFree authorization is permission-based.
  */
 public final class AuthContextExtractor {
   private static final Logger logger = LoggerFactory.getLogger(AuthContextExtractor.class);

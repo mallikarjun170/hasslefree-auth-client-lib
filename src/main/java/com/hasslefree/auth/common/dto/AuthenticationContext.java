@@ -17,16 +17,21 @@ public class AuthenticationContext {
   private String userId;
   private String username;
   private String email;
-  private Set<UserRole> roles;
+
+  /** Deprecated: Roles are not used for authorization. Retained for backward compatibility only. */
+  @Deprecated private Set<UserRole> roles;
+
   private String accessToken;
   private Long tokenExpirationTime;
   private RequestMetadata metadata;
 
   // Utility methods
+  @Deprecated
   public boolean hasRole(UserRole role) {
     return roles != null && roles.contains(role);
   }
 
+  @Deprecated
   public boolean hasAnyRole(UserRole... roles) {
     if (this.roles == null || this.roles.isEmpty()) {
       return false;
@@ -39,6 +44,7 @@ public class AuthenticationContext {
     return false;
   }
 
+  @Deprecated
   public boolean hasPrivilegeLevel(UserRole minimumRole) {
     if (roles == null || roles.isEmpty()) {
       return false;

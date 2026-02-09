@@ -15,6 +15,7 @@ public class ApiErrorResponse {
   String detail;
   String instance;
   String traceId;
+  String correlationId;
   List<InvalidParam> invalidParams;
 
   @Value

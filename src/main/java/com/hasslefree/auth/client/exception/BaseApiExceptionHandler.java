@@ -23,6 +23,7 @@ public abstract class BaseApiExceptionHandler {
 
   protected static final MediaType PROBLEM_JSON_MEDIA_TYPE =
       MediaType.parseMediaType("application/problem+json");
+  private static final String TRACEPARENT_HEADER = "traceparent";
   private static final Logger logger = LoggerFactory.getLogger(BaseApiExceptionHandler.class);
 
   @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -110,6 +111,7 @@ public abstract class BaseApiExceptionHandler {
       String detail,
       HttpServletRequest request,
       List<ApiErrorResponse.InvalidParam> invalidParams) {
+    String correlationId = resolveCorrelationId(request);
     String traceId = resolveTraceId(request);
     ApiErrorResponse response =
         ApiErrorResponse.builder()
@@ -119,6 +121,7 @@ public abstract class BaseApiExceptionHandler {
             .detail(detail)
             .instance(sanitizeUri(extractPath(request)))
             .traceId(traceId)
+            .correlationId(correlationId)
             .invalidParams(invalidParams)
             .build();
     return ResponseEntity.status(status)
@@ -144,11 +147,28 @@ public abstract class BaseApiExceptionHandler {
     if (traceId != null && !traceId.isBlank()) {
       return traceId;
     }
+    String traceparentTraceId = resolveTraceparentTraceId(request);
+    if (traceparentTraceId != null && !traceparentTraceId.isBlank()) {
+      return traceparentTraceId;
+    }
     String correlationId = resolveCorrelationId(request);
     if (correlationId != null && !correlationId.isBlank()) {
       return correlationId;
     }
     return UUID.randomUUID().toString();
+  }
+
+  protected String resolveTraceparentTraceId(HttpServletRequest request) {
+    String traceparent = request.getHeader(TRACEPARENT_HEADER);
+    if (traceparent == null || traceparent.isBlank()) {
+      return null;
+    }
+    String[] parts = traceparent.trim().split("-");
+    if (parts.length < 4) {
+      return null;
+    }
+    String traceId = parts[1];
+    return traceId.matches("^[0-9a-fA-F]{32}$") ? traceId.toLowerCase() : null;
   }
 
   protected String problemTypeFor(HttpStatus status) {

@@ -1,6 +1,7 @@
 package com.hasslefree.auth.client.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hasslefree.auth.client.filter.CorrelationIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -14,6 +15,7 @@ public class ProblemDetailsResponseWriter {
 
   public static final MediaType PROBLEM_JSON_MEDIA_TYPE =
       MediaType.parseMediaType("application/problem+json");
+  private static final String TRACEPARENT_HEADER = "traceparent";
 
   private final ObjectMapper objectMapper;
 
@@ -40,6 +42,7 @@ public class ProblemDetailsResponseWriter {
             .detail(detail)
             .instance(request.getRequestURI())
             .traceId(resolveTraceId(request))
+            .correlationId(resolveCorrelationId(request))
             .build();
 
     objectMapper.writeValue(response.getWriter(), payload);
@@ -50,10 +53,40 @@ public class ProblemDetailsResponseWriter {
     if (traceId != null && !traceId.isBlank()) {
       return traceId;
     }
-    Object correlationId = request.getAttribute("correlationId");
-    if (correlationId != null) {
-      return correlationId.toString();
+    String traceparentTraceId = resolveTraceparentTraceId(request);
+    if (traceparentTraceId != null && !traceparentTraceId.isBlank()) {
+      return traceparentTraceId;
+    }
+    String correlationId = resolveCorrelationId(request);
+    if (correlationId != null && !correlationId.isBlank()) {
+      return correlationId;
     }
     return UUID.randomUUID().toString();
+  }
+
+  private String resolveCorrelationId(HttpServletRequest request) {
+    String correlationId = MDC.get(CorrelationIdFilter.CORRELATION_ID_MDC_KEY);
+    if (correlationId != null && !correlationId.isBlank()) {
+      return correlationId;
+    }
+    String headerId = request.getHeader(CorrelationIdFilter.CORRELATION_ID_HEADER);
+    if (headerId != null && !headerId.isBlank()) {
+      return headerId;
+    }
+    Object attr = request.getAttribute(CorrelationIdFilter.CORRELATION_ID_ATTR);
+    return attr != null ? attr.toString() : null;
+  }
+
+  private String resolveTraceparentTraceId(HttpServletRequest request) {
+    String traceparent = request.getHeader(TRACEPARENT_HEADER);
+    if (traceparent == null || traceparent.isBlank()) {
+      return null;
+    }
+    String[] parts = traceparent.trim().split("-");
+    if (parts.length < 4) {
+      return null;
+    }
+    String traceId = parts[1];
+    return traceId.matches("^[0-9a-fA-F]{32}$") ? traceId.toLowerCase() : null;
   }
 }

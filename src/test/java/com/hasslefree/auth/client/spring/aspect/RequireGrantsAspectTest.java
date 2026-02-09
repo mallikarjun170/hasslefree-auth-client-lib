@@ -3,11 +3,14 @@ package com.hasslefree.auth.client.spring.aspect;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hasslefree.auth.client.access.AccessGrant;
 import com.hasslefree.auth.client.authorization.AccessGrantEvaluator;
 import com.hasslefree.auth.client.context.AuthContext;
+import com.hasslefree.auth.client.error.BadRequestException;
 import com.hasslefree.auth.client.error.ForbiddenException;
 import com.hasslefree.auth.client.spring.annotation.RequireGrants;
 import com.hasslefree.auth.client.spring.context.CurrentAuthContextProvider;
@@ -65,15 +68,55 @@ class RequireGrantsAspectTest {
         .hasMessageContaining("property.write");
   }
 
-  private ProceedingJoinPoint joinPointFor(String methodName) throws NoSuchMethodException {
-    Method method = SampleSecuredService.class.getMethod(methodName);
+  @Test
+  void enforce_usesAuthContextMethodArgumentBeforeProvider() throws Throwable {
+    CurrentAuthContextProvider provider = mock(CurrentAuthContextProvider.class);
+    RequireGrantsAspect aspect = new RequireGrantsAspect(new AccessGrantEvaluator(), provider);
+
+    AuthContext context =
+        new AuthContext(
+            "subject-1",
+            "principal-1",
+            "user@example.com",
+            List.of(AccessGrant.global("property.read")),
+            Map.of());
+
+    ProceedingJoinPoint joinPoint = joinPointFor("securedRead", context);
+    when(joinPoint.proceed()).thenReturn("ok");
+
+    Object result = aspect.enforce(joinPoint);
+
+    assertThat(result).isEqualTo("ok");
+    verify(provider, never()).required();
+  }
+
+  @Test
+  void enforce_rejectsAnnotationWithoutAnyPolicyValues() throws Throwable {
+    CurrentAuthContextProvider provider = mock(CurrentAuthContextProvider.class);
+    RequireGrantsAspect aspect = new RequireGrantsAspect(new AccessGrantEvaluator(), provider);
+
+    ProceedingJoinPoint joinPoint = joinPointFor("invalidPolicy");
+
+    assertThatThrownBy(() -> aspect.enforce(joinPoint))
+        .isInstanceOf(BadRequestException.class)
+        .hasMessageContaining("@RequireGrants requires anyOf and/or allOf values");
+  }
+
+  private ProceedingJoinPoint joinPointFor(String methodName, Object... args)
+      throws NoSuchMethodException {
+    Method method;
+    if (args.length == 0) {
+      method = SampleSecuredService.class.getMethod(methodName);
+    } else {
+      method = SampleSecuredService.class.getMethod(methodName, AuthContext.class);
+    }
     MethodSignature signature = mock(MethodSignature.class);
     when(signature.getMethod()).thenReturn(method);
 
     ProceedingJoinPoint joinPoint = mock(ProceedingJoinPoint.class);
     when(joinPoint.getSignature()).thenReturn(signature);
     when(joinPoint.getTarget()).thenReturn(new SampleSecuredService());
-    when(joinPoint.getArgs()).thenReturn(new Object[0]);
+    when(joinPoint.getArgs()).thenReturn(args);
     return joinPoint;
   }
 
@@ -87,6 +130,16 @@ class RequireGrantsAspectTest {
     @RequireGrants(allOf = {"property.read", "property.write"})
     public String securedWrite() {
       return "ok";
+    }
+
+    @RequireGrants(anyOf = {"property.read"})
+    public String securedRead(AuthContext context) {
+      return "ok";
+    }
+
+    @RequireGrants
+    public String invalidPolicy() {
+      return "bad";
     }
   }
 }

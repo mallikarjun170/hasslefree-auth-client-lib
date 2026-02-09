@@ -31,6 +31,8 @@ class AccessGrantEvaluatorTest {
     assertThat(evaluator.hasAll(context, List.of("property.read", "invoice.read"))).isFalse();
     assertThat(evaluator.hasAll(context, List.of())).isTrue();
     assertThat(evaluator.hasAny(null, List.of("property.read"))).isFalse();
+    assertThat(evaluator.hasAny(context, java.util.Arrays.asList("  ", null))).isTrue();
+    assertThat(evaluator.hasAll(context, List.of("PROPERTY.READ"))).isTrue();
   }
 
   @Test

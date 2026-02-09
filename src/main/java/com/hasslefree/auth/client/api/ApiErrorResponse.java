@@ -1,8 +1,7 @@
 package com.hasslefree.auth.client.api;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import java.time.Instant;
-import java.util.Map;
+import java.util.List;
 import lombok.Builder;
 import lombok.Value;
 
@@ -10,11 +9,18 @@ import lombok.Value;
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ApiErrorResponse {
-  Instant timestamp;
+  String type;
+  String title;
   int status;
-  String error;
-  String message;
-  String path;
-  String correlationId;
-  Map<String, String> validationErrors;
+  String detail;
+  String instance;
+  String traceId;
+  List<InvalidParam> invalidParams;
+
+  @Value
+  @Builder
+  public static class InvalidParam {
+    String name;
+    String reason;
+  }
 }

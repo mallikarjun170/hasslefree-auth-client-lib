@@ -16,6 +16,7 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
   public static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
   public static final String CORRELATION_ID_ATTR = "correlationId";
   public static final String CORRELATION_ID_MDC_KEY = "correlationId";
+  public static final String TRACE_ID_MDC_KEY = "traceId";
 
   @Override
   protected void doFilterInternal(
@@ -28,12 +29,14 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
 
     request.setAttribute(CORRELATION_ID_ATTR, correlationId);
     MDC.put(CORRELATION_ID_MDC_KEY, correlationId);
+    MDC.put(TRACE_ID_MDC_KEY, correlationId);
     response.setHeader(CORRELATION_ID_HEADER, correlationId);
 
     try {
       filterChain.doFilter(request, response);
     } finally {
       MDC.remove(CORRELATION_ID_MDC_KEY);
+      MDC.remove(TRACE_ID_MDC_KEY);
     }
   }
 }

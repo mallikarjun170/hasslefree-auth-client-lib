@@ -1,5 +1,6 @@
 package com.hasslefree.auth.common.dto;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
@@ -19,5 +20,13 @@ public class PermissionCheckRequest {
 
   @NotBlank private String resourceType;
 
-  @NotNull private UUID resourceId;
+  private UUID resourceId;
+
+  @AssertTrue(message = "resourceId is required unless resourceType is SYSTEM")
+  public boolean isResourceIdValid() {
+    if (resourceType == null || resourceType.isBlank()) {
+      return true;
+    }
+    return "SYSTEM".equalsIgnoreCase(resourceType.trim()) || resourceId != null;
+  }
 }

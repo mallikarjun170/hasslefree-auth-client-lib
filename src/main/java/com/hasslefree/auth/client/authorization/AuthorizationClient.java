@@ -77,11 +77,11 @@ public class AuthorizationClient {
     if (userId == null) {
       throw new IllegalArgumentException("userId is required");
     }
-    if (resourceId == null) {
-      throw new IllegalArgumentException("resourceId is required");
-    }
     if (resourceType == null || resourceType.isBlank()) {
       throw new IllegalArgumentException("resourceType is required");
+    }
+    if (!"SYSTEM".equalsIgnoreCase(resourceType.trim()) && resourceId == null) {
+      throw new IllegalArgumentException("resourceId is required for non-SYSTEM resourceType");
     }
     if (permissionCode == null || permissionCode.isBlank()) {
       throw new IllegalArgumentException("permissionCode is required");
@@ -98,6 +98,6 @@ public class AuthorizationClient {
     if (base.endsWith("/")) {
       base = base.substring(0, base.length() - 1);
     }
-    return base + "/internal/permissions/check";
+    return base + "/v1/internal/permissions/check";
   }
 }

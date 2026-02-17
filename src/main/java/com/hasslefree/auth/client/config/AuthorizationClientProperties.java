@@ -16,7 +16,20 @@ public class AuthorizationClientProperties {
 
   @NotBlank private String internalApiKey;
 
+  private Timeout timeout = new Timeout();
   private Cache cache = new Cache();
+
+  @Data
+  public static class Timeout {
+    @Min(100)
+    private int connectTimeoutMs = 1000;
+
+    @Min(100)
+    private int responseTimeoutMs = 2000;
+
+    @Min(100)
+    private int readTimeoutMs = 2000;
+  }
 
   @Data
   public static class Cache {

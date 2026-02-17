@@ -10,19 +10,17 @@ import java.time.Duration;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @RequiredArgsConstructor
 @Slf4j
 public class AuthorizationClient {
 
-  private final RestTemplate restTemplate;
+  private final WebClient webClient;
   private final AuthorizationClientProperties properties;
 
   private Cache<String, Boolean> permissionCache;
@@ -49,15 +47,19 @@ public class AuthorizationClient {
       UUID userId, String resourceType, UUID resourceId, String permissionCode) {
     PermissionCheckRequest request =
         new PermissionCheckRequest(userId, permissionCode, resourceType, resourceId);
-    HttpHeaders headers = new HttpHeaders();
-    headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
-    headers.set("X-Internal-Api-Key", properties.getInternalApiKey());
-    HttpEntity<PermissionCheckRequest> entity = new HttpEntity<>(request, headers);
 
     try {
-      restTemplate.postForEntity(permissionCheckUri(), entity, Void.class);
+      webClient
+          .post()
+          .uri(permissionCheckUri())
+          .contentType(MediaType.APPLICATION_JSON)
+          .header("X-Internal-Api-Key", properties.getInternalApiKey())
+          .bodyValue(request)
+          .retrieve()
+          .toBodilessEntity()
+          .block();
       return true;
-    } catch (HttpClientErrorException ex) {
+    } catch (WebClientResponseException ex) {
       if (ex.getStatusCode() == HttpStatus.FORBIDDEN) {
         log.debug(
             "Authorization denied for user {} on {}:{} ({})",
@@ -68,7 +70,7 @@ public class AuthorizationClient {
         return false;
       }
       throw new AuthorizationClientException("Unexpected authorization response", ex);
-    } catch (RestClientException ex) {
+    } catch (WebClientRequestException ex) {
       throw new AuthorizationClientException("Failed to call authorization service", ex);
     }
   }

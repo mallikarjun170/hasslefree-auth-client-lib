@@ -2,60 +2,58 @@ package com.hasslefree.auth.client.authorization;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.hasslefree.auth.client.config.AuthorizationClientProperties;
-import com.hasslefree.auth.common.dto.PermissionCheckRequest;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.ClientRequest;
+import org.springframework.web.reactive.function.client.ClientResponse;
+import org.springframework.web.reactive.function.client.ExchangeFunction;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 class AuthorizationClientTest {
 
-  private RestTemplate restTemplate;
-
   private AuthorizationClientProperties properties;
   private AuthorizationClient client;
+  private AtomicReference<ClientRequest> capturedRequest;
 
   @BeforeEach
   void setUp() {
-    restTemplate = mock(RestTemplate.class);
+    capturedRequest = new AtomicReference<>();
+    ExchangeFunction exchangeFunction =
+        request -> {
+          capturedRequest.set(request);
+          return Mono.just(ClientResponse.create(HttpStatus.OK).build());
+        };
+    WebClient webClient = WebClient.builder().exchangeFunction(exchangeFunction).build();
+
     properties = new AuthorizationClientProperties();
     properties.setBaseUrl("http://auth-service/");
     properties.setInternalApiKey("internal-key");
     properties.getCache().setTtlSeconds(60);
     properties.getCache().setMaxSize(1000);
 
-    client = new AuthorizationClient(restTemplate, properties);
+    client = new AuthorizationClient(webClient, properties);
     ReflectionTestUtils.invokeMethod(client, "initCache");
   }
 
   @Test
   void checkPermissionAllowsSystemResourceWithoutResourceIdAndUsesV1Path() {
     UUID userId = UUID.randomUUID();
-    when(restTemplate.postForEntity(any(String.class), any(HttpEntity.class), eq(Void.class)))
-        .thenReturn(ResponseEntity.ok().build());
 
     boolean allowed = client.checkPermission(userId, "SYSTEM", null, "ORG_READ");
 
     assertThat(allowed).isTrue();
-    ArgumentCaptor<HttpEntity<PermissionCheckRequest>> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
-    verify(restTemplate)
-        .postForEntity(
-            eq("http://auth-service/v1/internal/permissions/check"), entityCaptor.capture(), eq(Void.class));
-    PermissionCheckRequest payload = entityCaptor.getValue().getBody();
-    assertThat(payload).isNotNull();
-    assertThat(payload.getResourceType()).isEqualTo("SYSTEM");
-    assertThat(payload.getResourceId()).isNull();
+    ClientRequest request = capturedRequest.get();
+    assertThat(request).isNotNull();
+    assertThat(request.url().toString()).isEqualTo("http://auth-service/v1/internal/permissions/check");
+    assertThat(request.method().name()).isEqualTo("POST");
+    assertThat(request.headers().getFirst("X-Internal-Api-Key")).isEqualTo("internal-key");
   }
 
   @Test

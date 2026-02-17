@@ -13,6 +13,8 @@ public class AuthClientProperties {
   private final Claims claims = new Claims();
   private final Web web = new Web();
   private final Enforcement enforcement = new Enforcement();
+  private String userIdClaim = "custom:userId";
+  private boolean allowFallbackSubUuid;
 
   public Claims getClaims() {
     return claims;
@@ -24,6 +26,22 @@ public class AuthClientProperties {
 
   public Enforcement getEnforcement() {
     return enforcement;
+  }
+
+  public String getUserIdClaim() {
+    return userIdClaim;
+  }
+
+  public void setUserIdClaim(String userIdClaim) {
+    this.userIdClaim = userIdClaim;
+  }
+
+  public boolean isAllowFallbackSubUuid() {
+    return allowFallbackSubUuid;
+  }
+
+  public void setAllowFallbackSubUuid(boolean allowFallbackSubUuid) {
+    this.allowFallbackSubUuid = allowFallbackSubUuid;
   }
 
   public static class Claims {

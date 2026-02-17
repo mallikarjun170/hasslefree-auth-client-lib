@@ -1,8 +1,11 @@
 package com.hasslefree.auth.client.spring.config;
 
 import com.hasslefree.auth.client.authorization.AccessGrantEvaluator;
+import com.hasslefree.auth.client.authorization.AuthorizationClient;
+import com.hasslefree.auth.client.spring.authorization.HfGrantsService;
 import com.hasslefree.auth.client.spring.aspect.RequireGrantsAspect;
 import com.hasslefree.auth.client.spring.context.CurrentAuthContextProvider;
+import com.hasslefree.auth.client.spring.context.CurrentUserIdProvider;
 import com.hasslefree.auth.client.spring.extract.AccessGrantClaimParser;
 import com.hasslefree.auth.client.spring.extract.AuthenticationAuthContextExtractor;
 import com.hasslefree.auth.client.spring.web.AuthContextArgumentResolver;
@@ -47,6 +50,21 @@ public class AuthClientAutoConfiguration {
   public CurrentAuthContextProvider currentAuthContextProvider(
       AuthenticationAuthContextExtractor extractor) {
     return new CurrentAuthContextProvider(extractor);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  public CurrentUserIdProvider currentUserIdProvider(
+      CurrentAuthContextProvider provider, AuthClientProperties properties) {
+    return new CurrentUserIdProvider(provider, properties);
+  }
+
+  @Bean("hfGrants")
+  @ConditionalOnMissingBean(name = "hfGrants")
+  @ConditionalOnBean(AuthorizationClient.class)
+  public HfGrantsService hfGrantsService(
+      AuthorizationClient authorizationClient, CurrentUserIdProvider currentUserIdProvider) {
+    return new HfGrantsService(authorizationClient, currentUserIdProvider);
   }
 
   @Bean

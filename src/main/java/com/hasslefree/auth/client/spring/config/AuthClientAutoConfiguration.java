@@ -8,6 +8,7 @@ import com.hasslefree.auth.client.spring.context.CurrentAuthContextProvider;
 import com.hasslefree.auth.client.spring.context.CurrentUserIdProvider;
 import com.hasslefree.auth.client.spring.extract.AccessGrantClaimParser;
 import com.hasslefree.auth.client.spring.extract.AuthenticationAuthContextExtractor;
+import com.hasslefree.auth.client.spring.security.HassleFreeJwtAuthenticationConverter;
 import com.hasslefree.auth.client.spring.web.AuthContextArgumentResolver;
 import com.hasslefree.auth.client.spring.web.AuthContextRequestFilter;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -71,6 +72,14 @@ public class AuthClientAutoConfiguration {
   @ConditionalOnMissingBean
   public AccessGrantEvaluator accessGrantEvaluator() {
     return new AccessGrantEvaluator();
+  }
+
+  @Bean
+  @ConditionalOnMissingBean(HassleFreeJwtAuthenticationConverter.class)
+  @ConditionalOnClass(name = "org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken")
+  public HassleFreeJwtAuthenticationConverter hassleFreeJwtAuthenticationConverter(
+      AuthClientProperties properties, AccessGrantClaimParser parser) {
+    return new HassleFreeJwtAuthenticationConverter(properties, parser);
   }
 
   @Bean
